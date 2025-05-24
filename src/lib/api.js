@@ -398,72 +398,71 @@ export async function processPayment(bookingId, paymentMethod, selectedSeats) {
 }
 
 // Chức năng tìm rạp chiếu gần đây
-export async function fetchNearbyTheaters(latitude, longitude, distance = 5.0) {
-  // Trong môi trường thực tế, đây sẽ là API call
-  // Trong môi trường mock, ta sẽ tính toán khoảng cách cho dữ liệu mẫu
+export async function fetchNearbyTheaters(latitude, longitude, distance = 10.0) {
+  // Trong môi trường thực tế, đây sẽ là API call đến backend
+  // Backend sẽ sử dụng MongoDB geospatial queries để tìm rạp gần đó
   
-  // Giả lập API call
+  // Giả lập API call đến backend
   return new Promise((resolve) => {
     setTimeout(() => {
-      // Lấy tất cả rạp
-      const allTheaters = [...mockTheaters];
+      // Trong thực tế, request sẽ như sau:
+      // const response = await fetch(`/api/theaters/nearby?lat=${latitude}&lng=${longitude}&distance=${distance}`);
+      // const data = await response.json();
+      // return data;
       
-      // Tính khoảng cách và thêm vào mỗi rạp
-      const theatersWithDistance = allTheaters.map(theater => {
-        // Giả định tọa độ cho mỗi rạp (trong thực tế sẽ lấy từ DB)
-        const theaterCoords = getTheaterCoordinates(theater.id);
-        
-        // Tính khoảng cách giữa vị trí người dùng và rạp
-        const distance = calculateDistance(
-          latitude, 
-          longitude,
-          theaterCoords.lat,
-          theaterCoords.lng
-        );
-        
-        return {
-          ...theater,
-          distance: distance,
-          location: theaterCoords
-        };
-      });
+      // Mock response từ backend (đã được sắp xếp theo khoảng cách)
+      const mockNearbyTheaters = [
+        {
+          id: "theater1",
+          name: "Cinestar Quang Trung",
+          address: "45 Quang Trung, P.10, Q.Gò Vấp, TP.HCM",
+          city: "Hồ Chí Minh",
+          image: "/placeholder.svg?height=300&width=500&text=Cinestar Quang Trung",
+          distance: 2.5, // Backend đã tính toán khoảng cách
+          location: { lat: 10.772, lng: 106.698 },
+          rooms: [
+            { id: "room1", name: "Phòng 1", capacity: 120, type: "2D" },
+            { id: "room2", name: "Phòng 2", capacity: 120, type: "2D" },
+            { id: "room3", name: "Phòng 3", capacity: 100, type: "3D" },
+            { id: "room4", name: "Phòng 4", capacity: 80, type: "2D" },
+          ],
+        },
+        {
+          id: "theater2",
+          name: "Cinestar Hai Bà Trưng",
+          address: "135 Hai Bà Trưng, P.Bến Nghé, Q.1, TP.HCM",
+          city: "Hồ Chí Minh",
+          image: "/placeholder.svg?height=300&width=500&text=Cinestar Hai Bà Trưng",
+          distance: 4.8, // Backend đã tính toán khoảng cách
+          location: { lat: 10.773, lng: 106.701 },
+          rooms: [
+            { id: "room5", name: "Phòng 1", capacity: 150, type: "2D" },
+            { id: "room6", name: "Phòng 2", capacity: 150, type: "2D" },
+            { id: "room7", name: "Phòng 3", capacity: 120, type: "3D" },
+            { id: "room8", name: "Phòng 4", capacity: 100, type: "4DX" },
+          ],
+        },
+        {
+          id: "theater3",
+          name: "Cinestar Satra Q6",
+          address: "190-192 3/2, P.12, Q.10, TP.HCM",
+          city: "Hồ Chí Minh",
+          image: "/placeholder.svg?height=300&width=500&text=Cinestar Satra Q6",
+          distance: 8.2, // Backend đã tính toán khoảng cách
+          location: { lat: 10.743, lng: 106.628 },
+          rooms: [
+            { id: "room9", name: "Phòng 1", capacity: 130, type: "2D" },
+            { id: "room10", name: "Phòng 2", capacity: 130, type: "2D" },
+            { id: "room11", name: "Phòng 3", capacity: 110, type: "3D" },
+            { id: "room12", name: "Phòng 4", capacity: 90, type: "2D" },
+          ],
+        }
+      ];
       
-      // Lọc theo khoảng cách và sắp xếp theo rạp gần nhất
-      const nearbyTheaters = theatersWithDistance
-        .filter(theater => theater.distance <= distance)
-        .sort((a, b) => a.distance - b.distance);
+      // Lọc rạp trong phạm vi distance và đã được sắp xếp bởi backend
+      const nearbyTheaters = mockNearbyTheaters.filter(theater => theater.distance <= distance);
       
       resolve(nearbyTheaters);
     }, 500);
   });
-}
-
-// Hàm giả định tọa độ cho mỗi rạp (chỉ cho môi trường mock)
-function getTheaterCoordinates(theaterId) {
-  // Dữ liệu mẫu - trong thực tế, mỗi rạp sẽ có tọa độ lưu trong DB
-  const coordinates = {
-    theater1: { lat: 10.772, lng: 106.698 }, // Quang Trung, Gò Vấp
-    theater2: { lat: 10.773, lng: 106.701 }, // Hai Bà Trưng
-    theater3: { lat: 10.743, lng: 106.628 }  // Satra Q6
-  };
-  
-  return coordinates[theaterId] || { lat: 10.762, lng: 106.660 }; // Mặc định
-}
-
-// Hàm tính khoảng cách (công thức Haversine)
-function calculateDistance(lat1, lon1, lat2, lon2) {
-  const R = 6371; // Bán kính trái đất (km)
-  const dLat = deg2rad(lat2 - lat1);
-  const dLon = deg2rad(lon2 - lon1);
-  const a = 
-    Math.sin(dLat/2) * Math.sin(dLat/2) +
-    Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) * 
-    Math.sin(dLon/2) * Math.sin(dLon/2); 
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); 
-  const distance = R * c; // Khoảng cách (km)
-  return distance;
-}
-
-function deg2rad(deg) {
-  return deg * (Math.PI/180);
 }
