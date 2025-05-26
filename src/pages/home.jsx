@@ -6,11 +6,14 @@ import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from "../components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select"
 import MovieCard from "../components/movie-card"
-import { fetchMovies } from "../lib/api"
+import { fetchMovies, fetchTheaters, fetchShowtimes } from "../lib/api"
 
 export default function HomePage() {
   const [currentSlide, setCurrentSlide] = useState(0)
   const [movies, setMovies] = useState([])
+  const [theaters, setTheaters] = useState([])
+  const [showtimes, setShowtimes] = useState([])
+  const [loading, setLoading] = useState(true)
   const [selectedTheater, setSelectedTheater] = useState("")
   const [selectedMovie, setSelectedMovie] = useState("")
   const [selectedDate, setSelectedDate] = useState("")
@@ -38,12 +41,31 @@ export default function HomePage() {
   ]
 
   useEffect(() => {
-    const loadMovies = async () => {
-      const data = await fetchMovies()
-      setMovies(data)
+    const loadData = async () => {
+      try {
+        setLoading(true)
+        
+        // Load movies và theaters song song
+        const [moviesData, theatersData] = await Promise.all([
+          fetchMovies(),
+          fetchTheaters()
+        ])
+        
+        setMovies(moviesData || [])
+        setTheaters(theatersData || [])
+        
+        // Set default date to today
+        const today = new Date().toISOString().split('T')[0]
+        setSelectedDate(today)
+        
+      } catch (error) {
+        console.error('Error loading data:', error)
+      } finally {
+        setLoading(false)
+      }
     }
 
-    loadMovies()
+    loadData()
 
     // Auto slide for banner
     const interval = setInterval(() => {
@@ -52,6 +74,27 @@ export default function HomePage() {
 
     return () => clearInterval(interval)
   }, [])
+
+  // Load showtimes when filters change
+  useEffect(() => {
+    const loadShowtimes = async () => {
+      if (selectedTheater && selectedMovie && selectedDate) {
+        try {
+          const showtimesData = await fetchShowtimes({
+            movieId: selectedMovie,
+            theaterId: selectedTheater,
+            date: selectedDate
+          })
+          setShowtimes(showtimesData || [])
+        } catch (error) {
+          console.error('Error loading showtimes:', error)
+          setShowtimes([])
+        }
+      }
+    }
+
+    loadShowtimes()
+  }, [selectedTheater, selectedMovie, selectedDate])
 
   const nextSlide = () => {
     setCurrentSlide((prev) => (prev + 1) % banners.length)
@@ -63,10 +106,77 @@ export default function HomePage() {
 
   const handleBookTicket = () => {
     if (selectedTheater && selectedMovie && selectedDate && selectedTime) {
-      window.location.href = `/booking?theater=${selectedTheater}&movie=${selectedMovie}&date=${selectedDate}&time=${selectedTime}`
+      // Tìm showtime ID dựa trên selections
+      const showtime = showtimes.find(st => 
+        st.movieId === selectedMovie && 
+        st.cinemaId === selectedTheater && 
+        st.showDateTime.includes(selectedDate) &&
+        st.showDateTime.includes(selectedTime)
+      )
+      
+      if (showtime) {
+        window.location.href = `/booking?showtime=${showtime.id}`
+      } else {
+        alert("Không tìm thấy suất chiếu phù hợp")
+      }
     } else {
       alert("Vui lòng chọn đầy đủ thông tin để đặt vé")
     }
+  }
+
+  // Generate time slots based on selected filters
+  const getAvailableTimes = () => {
+    if (!selectedTheater || !selectedMovie || !selectedDate) return []
+    
+    return showtimes
+      .filter(st => 
+        st.movieId === selectedMovie && 
+        st.cinemaId === selectedTheater && 
+        st.showDateTime.includes(selectedDate)
+      )
+      .map(st => {
+        const time = new Date(st.showDateTime).toLocaleTimeString('vi-VN', {
+          hour: '2-digit',
+          minute: '2-digit'
+        })
+        return {
+          value: time,
+          label: time,
+          showtimeId: st.id
+        }
+      })
+  }
+
+  // Generate date options (next 7 days)
+  const getDateOptions = () => {
+    const dates = []
+    const today = new Date()
+    
+    for (let i = 0; i < 7; i++) {
+      const date = new Date(today)
+      date.setDate(today.getDate() + i)
+      const dateString = date.toISOString().split('T')[0]
+      const label = i === 0 ? 'Hôm nay' : i === 1 ? 'Ngày mai' : 
+        date.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })
+      
+      dates.push({
+        value: dateString,
+        label: `${label} (${date.toLocaleDateString('vi-VN', { weekday: 'short' })})`
+      })
+    }
+    
+    return dates
+  }
+
+  if (loading) {
+    return (
+      <div className="bg-[#0a1426] text-white min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-yellow-500 mx-auto"></div>
+          <p className="mt-4 text-lg">Đang tải dữ liệu...</p>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -128,9 +238,11 @@ export default function HomePage() {
                   <SelectValue placeholder="1. Chọn Rạp" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="cinestar-quang-trung">Cinestar Quang Trung</SelectItem>
-                  <SelectItem value="cinestar-hai-ba-trung">Cinestar Hai Bà Trưng</SelectItem>
-                  <SelectItem value="cinestar-satra-q6">Cinestar Satra Q6</SelectItem>
+                  {theaters.map((theater) => (
+                    <SelectItem key={theater.id} value={theater.id}>
+                      {theater.name}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
 
@@ -152,10 +264,11 @@ export default function HomePage() {
                   <SelectValue placeholder="3. Chọn Ngày" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="2024-05-16">Hôm nay (16/05)</SelectItem>
-                  <SelectItem value="2024-05-17">Ngày mai (17/05)</SelectItem>
-                  <SelectItem value="2024-05-18">18/05/2024</SelectItem>
-                  <SelectItem value="2024-05-19">19/05/2024</SelectItem>
+                  {getDateOptions().map((date) => (
+                    <SelectItem key={date.value} value={date.value}>
+                      {date.label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
 
@@ -164,12 +277,11 @@ export default function HomePage() {
                   <SelectValue placeholder="4. Chọn Suất" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="10:00">10:00</SelectItem>
-                  <SelectItem value="12:30">12:30</SelectItem>
-                  <SelectItem value="15:00">15:00</SelectItem>
-                  <SelectItem value="17:30">17:30</SelectItem>
-                  <SelectItem value="20:00">20:00</SelectItem>
-                  <SelectItem value="22:30">22:30</SelectItem>
+                  {getAvailableTimes().map((time) => (
+                    <SelectItem key={time.value} value={time.value}>
+                      {time.label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -177,6 +289,7 @@ export default function HomePage() {
             <Button
               className="bg-yellow-500 hover:bg-yellow-600 text-black font-bold whitespace-nowrap"
               onClick={handleBookTicket}
+              disabled={!selectedTheater || !selectedMovie || !selectedDate || !selectedTime}
             >
               ĐẶT NGAY
             </Button>
@@ -189,9 +302,11 @@ export default function HomePage() {
         <h2 className="text-3xl font-bold text-center mb-8">PHIM ĐANG CHIẾU</h2>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-          {movies.map((movie) => (
-            <MovieCard key={movie.id} movie={movie} />
-          ))}
+          {movies
+            .filter(movie => movie.status === 'now-showing')
+            .map((movie) => (
+              <MovieCard key={movie.id} movie={movie} />
+            ))}
         </div>
       </div>
 
@@ -200,9 +315,12 @@ export default function HomePage() {
         <h2 className="text-3xl font-bold text-center mb-8">PHIM SẮP CHIẾU</h2>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-          {movies.slice(0, 4).map((movie) => (
-            <MovieCard key={`coming-${movie.id}`} movie={{ ...movie, isComingSoon: true }} />
-          ))}
+          {movies
+            .filter(movie => movie.status === 'coming-soon')
+            .slice(0, 4)
+            .map((movie) => (
+              <MovieCard key={`coming-${movie.id}`} movie={{ ...movie, isComingSoon: true }} />
+            ))}
         </div>
       </div>
 

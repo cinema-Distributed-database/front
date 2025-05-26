@@ -9,9 +9,11 @@ export default function VNPayPayment({ bookingId, amount, seats, onSuccess, onCa
   const navigate = useNavigate()
   const [countdown, setCountdown] = useState(180) // 3 minutes countdown
   const [paymentStatus, setPaymentStatus] = useState("pending") // pending, success, failed
+  const [paymentUrl, setPaymentUrl] = useState(null)
+  const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    // Simulate payment process
+    // Countdown timer
     const timer = setInterval(() => {
       setCountdown((prev) => {
         if (prev <= 1) {
@@ -26,10 +28,42 @@ export default function VNPayPayment({ bookingId, amount, seats, onSuccess, onCa
     return () => clearInterval(timer)
   }, [])
 
+  const handleCreatePayment = async () => {
+    if (loading) return
+    
+    setLoading(true)
+    try {
+      // Gọi API tạo URL thanh toán VNPay
+      const response = await fetch('http://localhost:8080/api/payments/vnpay/create', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          bookingId: bookingId,
+          returnUrl: `${window.location.origin}/payment-success`
+        })
+      })
+
+      const result = await response.json()
+      
+      if (result.success && result.data.paymentUrl) {
+        // Chuyển hướng đến VNPay
+        window.location.href = result.data.paymentUrl
+      } else {
+        throw new Error(result.message || 'Không thể tạo URL thanh toán')
+      }
+    } catch (error) {
+      console.error('Error creating payment:', error)
+      alert('Lỗi khi tạo thanh toán: ' + error.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const handleCompletePayment = () => {
     setPaymentStatus("success")
     setTimeout(() => {
-      // Truyền thông tin ghế vào URL khi chuyển hướng
       onSuccess && onSuccess(seats)
     }, 1500)
   }
@@ -96,9 +130,14 @@ export default function VNPayPayment({ bookingId, amount, seats, onSuccess, onCa
   return (
     <Card className="w-full max-w-md mx-auto bg-gray-900 border-gray-800">
       <CardHeader className="text-center">
-        <img src="/placeholder.svg?height=60&width=120&text=VNPAY" alt="VNPAY" className="h-15 mx-auto mb-4" />
+        <img 
+          src="/placeholder.svg?height=60&width=120&text=VNPAY" 
+          alt="VNPAY" 
+          className="h-15 mx-auto mb-4" 
+        />
         <CardTitle>Thanh toán qua VNPAY</CardTitle>
       </CardHeader>
+      
       <CardContent className="space-y-6">
         <div className="bg-gray-800 p-4 rounded-lg">
           <div className="flex justify-between mb-2">
@@ -107,7 +146,7 @@ export default function VNPayPayment({ bookingId, amount, seats, onSuccess, onCa
           </div>
           <div className="flex justify-between mb-2">
             <span className="text-gray-400">Số tiền:</span>
-            <span className="font-bold text-yellow-500">{amount.toLocaleString("vi-VN")} VNĐ</span>
+            <span className="font-bold text-yellow-500">{amount?.toLocaleString("vi-VN")} VNĐ</span>
           </div>
           <div className="flex justify-between">
             <span className="text-gray-400">Thời gian còn lại:</span>
@@ -118,29 +157,57 @@ export default function VNPayPayment({ bookingId, amount, seats, onSuccess, onCa
         </div>
 
         <div className="text-center">
-          <p className="text-sm text-gray-400 mb-4">Quét mã QR bằng ứng dụng ngân hàng hoặc ví VNPAY</p>
+          <p className="text-sm text-gray-400 mb-4">
+            Nhấn nút bên dưới để chuyển đến cổng thanh toán VNPay
+          </p>
           <div className="bg-white p-4 rounded-lg inline-block">
-            <img src="/placeholder.svg?height=200&width=200&text=QR+Code" alt="QR Code" className="w-48 h-48 mx-auto" />
+            <img 
+              src="/placeholder.svg?height=200&width=200&text=VNPay+Logo" 
+              alt="VNPay Logo" 
+              className="w-48 h-48 mx-auto" 
+            />
           </div>
         </div>
 
         <div className="bg-gray-800 p-4 rounded-lg">
           <h3 className="font-bold mb-2">Hướng dẫn thanh toán:</h3>
           <ol className="list-decimal list-inside text-sm space-y-1 text-gray-300">
-            <li>Mở ứng dụng ngân hàng hoặc ví VNPAY</li>
-            <li>Quét mã QR</li>
-            <li>Xác nhận thông tin và thanh toán</li>
-            <li>Hoàn tất giao dịch</li>
+            <li>Nhấn nút "Thanh toán ngay" bên dưới</li>
+            <li>Chọn phương thức thanh toán (ATM, Visa, MasterCard...)</li>
+            <li>Nhập thông tin thẻ/tài khoản</li>
+            <li>Xác nhận giao dịch</li>
+            <li>Hoàn tất thanh toán</li>
           </ol>
         </div>
       </CardContent>
+      
       <CardFooter className="flex flex-col gap-2">
-        <Button className="w-full bg-green-600 hover:bg-green-700" onClick={handleCompletePayment}>
-          Tôi đã thanh toán
+        <Button 
+          className="w-full bg-green-600 hover:bg-green-700" 
+          onClick={handleCreatePayment}
+          disabled={loading || countdown <= 0}
+        >
+          {loading ? "Đang xử lý..." : "Thanh toán ngay"}
         </Button>
-        <Button variant="outline" className="w-full" onClick={handleCancelPayment}>
+        
+        <Button 
+          variant="outline" 
+          className="w-full" 
+          onClick={handleCancelPayment}
+        >
           Hủy thanh toán
         </Button>
+        
+        {/* Development only - Simulate success */}
+        {process.env.NODE_ENV === 'development' && (
+          <Button 
+            variant="secondary" 
+            className="w-full text-xs" 
+            onClick={handleCompletePayment}
+          >
+            [DEV] Giả lập thanh toán thành công
+          </Button>
+        )}
       </CardFooter>
     </Card>
   )

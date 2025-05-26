@@ -7,48 +7,84 @@ import { Button } from "../components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "../components/ui/card"
 import { Separator } from "../components/ui/separator"
 import VNPayPayment from "./vnpay-payment"
-import { fetchMovie, fetchShowtimes, fetchTheater, fetchSeats, createBooking, processPayment } from "../lib/api"
+import { 
+  fetchMovie, 
+  fetchTheater, 
+  fetchSeats, 
+  holdSeats, 
+  releaseSeats, 
+  createBooking,
+  handleApiError 
+} from "../lib/api"
 
 export default function BookingPage() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const showTimeId = searchParams.get("showtime")
+  
   const [loading, setLoading] = useState(true)
   const [movie, setMovie] = useState(null)
   const [showtime, setShowtime] = useState(null)
   const [theater, setTheater] = useState(null)
+  const [room, setRoom] = useState(null)
   const [seats, setSeats] = useState([])
   const [selectedSeats, setSelectedSeats] = useState([])
   const [step, setStep] = useState("seats")
-  const [paymentMethod, setPaymentMethod] = useState("vnpay")
   const [booking, setBooking] = useState(null)
+  const [customerInfo, setCustomerInfo] = useState({
+    fullName: "",
+    phone: "",
+    email: ""
+  })
 
   useEffect(() => {
     const loadData = async () => {
+      if (!showTimeId) {
+        navigate("/")
+        return
+      }
+
       setLoading(true)
       try {
-        if (!showTimeId) {
-          navigate("/")
-          return
+        // Lấy thông tin suất chiếu từ API backend
+        const response = await fetch(`http://localhost:8080/api/showtimes/${showTimeId}`)
+        const showtimeResponse = await response.json()
+        
+        if (!showtimeResponse.success) {
+          throw new Error("Showtime not found")
+        }
+        
+        const showtimeData = showtimeResponse.data
+        setShowtime(showtimeData)
+
+        // Load movie, theater, seats song song
+        const [movieData, theaterData, seatsData] = await Promise.all([
+          fetchMovie(showtimeData.movieId),
+          fetchTheater(showtimeData.cinemaId),
+          fetchSeats(showtimeData.id)
+        ])
+
+        setMovie(movieData)
+        setTheater(theaterData)
+        setSeats(seatsData || [])
+        
+        // Load room info nếu cần
+        if (showtimeData.roomId) {
+          try {
+            const response = await fetch(`http://localhost:8080/api/rooms/${showtimeData.roomId}`)
+            const roomResponse = await response.json()
+            if (roomResponse.success) {
+              setRoom(roomResponse.data)
+            }
+          } catch (error) {
+            console.warn("Could not load room data:", error)
+          }
         }
 
-        const showtimesData = await fetchShowtimes()
-        const showtime = showtimesData.find((s) => s.id === showTimeId) || null
-        setShowtime(showtime)
-
-        if (showtime) {
-          const [movieData, theaterData, seatsData] = await Promise.all([
-            fetchMovie(showtime.movieId),
-            fetchTheater(showtime.theaterId),
-            fetchSeats(showtime.id),
-          ])
-
-          setMovie(movieData)
-          setTheater(theaterData)
-          setSeats(seatsData)
-        }
       } catch (error) {
         console.error("Error loading booking data:", error)
+        alert("Không thể tải thông tin suất chiếu. Vui lòng thử lại.")
+        navigate("/")
       } finally {
         setLoading(false)
       }
@@ -73,7 +109,7 @@ export default function BookingPage() {
   const getTotalPrice = () => {
     return selectedSeats.reduce((total, seatId) => {
       const seat = seats.find((s) => s.id === seatId)
-      return total + (seat?.price || 0)
+      return total + (seat?.price || 90000)
     }, 0)
   }
 
@@ -83,20 +119,64 @@ export default function BookingPage() {
       return
     }
 
-    setStep("payment")
+    if (!customerInfo.fullName || !customerInfo.phone) {
+      alert("Vui lòng nhập đầy đủ thông tin khách hàng")
+      return
+    }
+
+    try {
+      // Giữ ghế trước khi chuyển sang bước thanh toán
+      await holdSeats(showTimeId, selectedSeats, customerInfo.phone)
+      
+      // Tạo booking
+      const bookingData = await createBooking({
+        showTimeId: showTimeId,
+        customerInfo: customerInfo,
+        seats: selectedSeats,
+        ticketTypes: [
+          {
+            type: "Người lớn",
+            quantity: selectedSeats.length,
+            pricePerTicket: 90000
+          }
+        ],
+        concessions: []
+      })
+      
+      setBooking(bookingData)
+      setStep("payment")
+      
+    } catch (error) {
+      const errorInfo = handleApiError(error)
+      alert(errorInfo.message || "Không thể giữ ghế. Vui lòng thử lại.")
+    }
   }
 
   const handlePaymentSuccess = (seats) => {
-    // Chuyển hướng đến trang xác nhận thanh toán với thông tin ghế
-    navigate(`/payment-success?bookingId=BK${Date.now()}&seats=${seats.join(",")}`)
+    // Chuyển hướng đến trang xác nhận thanh toán với thông tin booking
+    navigate(`/payment-success?bookingId=${booking?.confirmationCode}&seats=${seats.join(",")}`)
   }
 
-  const handlePaymentCancel = () => {
+  const handlePaymentCancel = async () => {
+    // Hủy giữ ghế khi cancel payment
+    if (selectedSeats.length > 0) {
+      try {
+        await releaseSeats(showTimeId, selectedSeats)
+      } catch (error) {
+        console.error("Error releasing seats:", error)
+      }
+    }
     setStep("seats")
   }
 
   const renderSeats = () => {
-    if (seats.length === 0) return null
+    if (seats.length === 0) {
+      return (
+        <div className="text-center py-8">
+          <p className="text-gray-400">Đang tải sơ đồ ghế...</p>
+        </div>
+      )
+    }
 
     // Group seats by row
     const seatsByRow = {}
@@ -110,16 +190,20 @@ export default function BookingPage() {
     return (
       <div className="mt-8">
         <div className="w-full bg-gray-800 p-4 text-center mb-8 rounded-lg">
-          <div className="w-3/4 h-2 bg-yellow-500 mx-auto mb-8"></div>
+          <div className="w-3/4 h-2 bg-yellow-500 mx-auto mb-4"></div>
           <p className="text-sm text-gray-400">MÀN HÌNH</p>
         </div>
 
         <div className="flex flex-col items-center gap-2">
-          {Object.entries(seatsByRow).map(([row, rowSeats]) => (
+          {Object.entries(seatsByRow)
+            .sort(([a], [b]) => a.localeCompare(b))
+            .map(([row, rowSeats]) => (
             <div key={row} className="flex items-center gap-2">
               <div className="w-6 text-center font-bold">{row}</div>
               <div className="flex gap-2">
-                {rowSeats.map((seat) => {
+                {rowSeats
+                  .sort((a, b) => a.number - b.number)
+                  .map((seat) => {
                   let bgColor = "bg-gray-700"
                   let textColor = "text-white"
                   let cursor = "cursor-pointer"
@@ -171,103 +255,64 @@ export default function BookingPage() {
             <span className="text-sm">Đã đặt</span>
           </div>
         </div>
+
+        {/* Customer Info Form */}
+        <div className="mt-8 bg-gray-800 p-6 rounded-lg">
+          <h3 className="text-lg font-bold mb-4">Thông tin khách hàng</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-2">Họ và tên *</label>
+              <input
+                type="text"
+                className="w-full p-3 bg-gray-700 text-white rounded-md"
+                placeholder="Nhập họ và tên"
+                value={customerInfo.fullName}
+                onChange={(e) => setCustomerInfo(prev => ({ ...prev, fullName: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-2">Số điện thoại *</label>
+              <input
+                type="tel"
+                className="w-full p-3 bg-gray-700 text-white rounded-md"
+                placeholder="Nhập số điện thoại"
+                value={customerInfo.phone}
+                onChange={(e) => setCustomerInfo(prev => ({ ...prev, phone: e.target.value }))}
+              />
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium mb-2">Email</label>
+              <input
+                type="email"
+                className="w-full p-3 bg-gray-700 text-white rounded-md"
+                placeholder="Nhập email (tùy chọn)"
+                value={customerInfo.email}
+                onChange={(e) => setCustomerInfo(prev => ({ ...prev, email: e.target.value }))}
+              />
+            </div>
+          </div>
+        </div>
       </div>
     )
   }
 
   const renderPaymentMethods = () => {
+    if (!booking) {
+      return (
+        <div className="text-center py-8">
+          <p className="text-gray-400">Đang tải thông tin thanh toán...</p>
+        </div>
+      )
+    }
+
     return (
       <VNPayPayment 
-        bookingId={`BK${Date.now()}`} 
+        bookingId={booking.id} 
         amount={getTotalPrice()} 
         seats={selectedSeats}
         onSuccess={handlePaymentSuccess}
         onCancel={handlePaymentCancel}
       />
-    )
-  }
-
-  const renderConfirmation = () => {
-    if (!booking || !movie || !showtime || !theater) return null
-
-    return (
-      <div className="flex flex-col items-center">
-        <div className="w-24 h-24 bg-green-500 rounded-full flex items-center justify-center mb-6">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            className="h-12 w-12 text-white"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-          </svg>
-        </div>
-
-        <h2 className="text-2xl font-bold mb-2">Đặt vé thành công!</h2>
-        <p className="text-gray-400 mb-6">
-          Mã đặt vé của bạn: <span className="font-bold text-white">{booking.id}</span>
-        </p>
-
-        <Card className="w-full max-w-md bg-gray-900 border-gray-800">
-          <CardHeader>
-            <CardTitle>Thông tin vé</CardTitle>
-            <CardDescription>Vui lòng đến rạp trước giờ chiếu 15-30 phút</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <h3 className="font-bold">{movie.title}</h3>
-              <p className="text-sm text-gray-400">
-                {movie.ageRestriction} • {movie.duration} phút
-              </p>
-            </div>
-
-            <Separator />
-
-            <div className="flex items-start gap-2">
-              <MapPin size={18} className="flex-shrink-0 mt-0.5" />
-              <div>
-                <p className="font-bold">{theater.name}</p>
-                <p className="text-sm text-gray-400">{theater.address}</p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <Clock size={18} />
-              <div>
-                <p>
-                  {new Date(showtime.date).toLocaleDateString("vi-VN")} • {showtime.startTime}
-                </p>
-              </div>
-            </div>
-
-            <Separator />
-
-            <div>
-              <p className="font-bold mb-2">Ghế</p>
-              <div className="flex flex-wrap gap-2">
-                {selectedSeats.map((seatId) => (
-                  <div key={seatId} className="bg-yellow-500 text-black px-2 py-1 rounded text-sm font-bold">
-                    {seatId}
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <Separator />
-
-            <div className="flex justify-between">
-              <p className="font-bold">Tổng tiền</p>
-              <p className="font-bold">{getTotalPrice().toLocaleString("vi-VN")} VNĐ</p>
-            </div>
-          </CardContent>
-          <CardFooter>
-            <Button className="w-full" onClick={() => navigate("/")}>
-              Về trang chủ
-            </Button>
-          </CardFooter>
-        </Card>
-      </div>
     )
   }
 
@@ -295,21 +340,19 @@ export default function BookingPage() {
   return (
     <div className="bg-[#0a1426] text-white min-h-screen py-8">
       <div className="container mx-auto px-4">
-        <div className="flex flex-col md:flex-row gap-8">
-          <div className="w-full md:w-2/3">
+        <div className="flex flex-col lg:flex-row gap-8">
+          <div className="w-full lg:w-2/3">
             <h1 className="text-2xl font-bold mb-6">
-              {step === "seats" && "Chọn ghế"}
+              {step === "seats" && "Chọn ghế & Thông tin"}
               {step === "payment" && "Thanh toán"}
-              {step === "confirmation" && "Xác nhận đặt vé"}
             </h1>
 
             {step === "seats" && renderSeats()}
             {step === "payment" && renderPaymentMethods()}
-            {step === "confirmation" && renderConfirmation()}
           </div>
 
-          <div className="w-full md:w-1/3">
-            <Card className="bg-gray-900 border-gray-800">
+          <div className="w-full lg:w-1/3">
+            <Card className="bg-gray-900 border-gray-800 sticky top-4">
               <CardHeader>
                 <CardTitle>Thông tin đặt vé</CardTitle>
               </CardHeader>
@@ -325,7 +368,7 @@ export default function BookingPage() {
                   <div>
                     <h3 className="font-bold">{movie.title}</h3>
                     <p className="text-sm text-gray-400">
-                      {movie.ageRestriction} • {movie.duration} phút
+                      {movie.ageRating} • {movie.duration} phút
                     </p>
                   </div>
                 </div>
@@ -335,15 +378,28 @@ export default function BookingPage() {
                 <div className="space-y-2">
                   <div className="flex justify-between">
                     <span className="text-gray-400">Rạp:</span>
-                    <span>{theater.name}</span>
+                    <span className="text-sm">{theater.name}</span>
                   </div>
+                  {room && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Phòng:</span>
+                      <span className="text-sm">{room.name}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between">
                     <span className="text-gray-400">Ngày:</span>
-                    <span>{new Date(showtime.date).toLocaleDateString("vi-VN")}</span>
+                    <span className="text-sm">
+                      {new Date(showtime.showDateTime).toLocaleDateString("vi-VN")}
+                    </span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-400">Suất chiếu:</span>
-                    <span>{showtime.startTime}</span>
+                    <span className="text-sm">
+                      {new Date(showtime.showDateTime).toLocaleTimeString('vi-VN', {
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}
+                    </span>
                   </div>
                 </div>
 
@@ -352,11 +408,13 @@ export default function BookingPage() {
                 <div className="space-y-2">
                   <div className="flex justify-between">
                     <span className="text-gray-400">Ghế đã chọn:</span>
-                    <span>{selectedSeats.length > 0 ? selectedSeats.join(", ") : "Chưa chọn ghế"}</span>
+                    <span className="text-sm">
+                      {selectedSeats.length > 0 ? selectedSeats.join(", ") : "Chưa chọn ghế"}
+                    </span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-400">Số lượng:</span>
-                    <span>{selectedSeats.length} ghế</span>
+                    <span className="text-sm">{selectedSeats.length} ghế</span>
                   </div>
                 </div>
 
@@ -364,23 +422,24 @@ export default function BookingPage() {
 
                 <div className="flex justify-between font-bold text-lg">
                   <span>Tổng tiền:</span>
-                  <span>{getTotalPrice().toLocaleString("vi-VN")} VNĐ</span>
+                  <span className="text-yellow-500">{getTotalPrice().toLocaleString("vi-VN")} VNĐ</span>
                 </div>
               </CardContent>
+              
               <CardFooter>
                 {step === "seats" && (
                   <Button
                     className="w-full bg-yellow-500 hover:bg-yellow-600 text-black font-bold"
                     onClick={handleContinueToPayment}
-                    disabled={selectedSeats.length === 0}
+                    disabled={selectedSeats.length === 0 || !customerInfo.fullName || !customerInfo.phone}
                   >
-                    Tiếp tục
+                    Tiếp tục thanh toán
                   </Button>
                 )}
 
                 {step === "payment" && (
                   <div className="w-full space-y-2">
-                    <Button variant="outline" className="w-full" onClick={() => setStep("seats")}>
+                    <Button variant="outline" className="w-full" onClick={handlePaymentCancel}>
                       Quay lại
                     </Button>
                   </div>

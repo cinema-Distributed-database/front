@@ -24,11 +24,17 @@ export default function MovieDetail() {
     const loadData = async () => {
       setLoading(true)
       try {
+        // Load movie data
         const movieData = await fetchMovie(params.id)
+        if (!movieData) {
+          navigate('/not-found')
+          return
+        }
         setMovie(movieData)
 
+        // Load theaters
         const theatersData = await fetchTheaters()
-        setTheaters(theatersData)
+        setTheaters(theatersData || [])
 
         // Generate dates for the next 7 days
         const today = new Date()
@@ -40,30 +46,34 @@ export default function MovieDetail() {
         setDates(nextDates)
         setSelectedDate(nextDates[0])
 
-        if (movieData) {
-          const showtimesData = await fetchShowtimes({ movieId: movieData.id })
-          setShowtimes(showtimesData)
-        }
+        // Load showtimes for this movie
+        const showtimesData = await fetchShowtimes({ movieId: movieData.id })
+        setShowtimes(showtimesData || [])
+
       } catch (error) {
         console.error("Error loading movie data:", error)
+        navigate('/not-found')
       } finally {
         setLoading(false)
       }
     }
 
     loadData()
-  }, [params.id])
+  }, [params.id, navigate])
 
   useEffect(() => {
     if (showtimes.length > 0) {
       let filtered = [...showtimes]
 
       if (selectedDate) {
-        filtered = filtered.filter((s) => s.date === selectedDate)
+        filtered = filtered.filter((s) => {
+          const showtimeDate = new Date(s.showDateTime).toISOString().split('T')[0]
+          return showtimeDate === selectedDate
+        })
       }
 
       if (selectedTheater) {
-        filtered = filtered.filter((s) => s.theaterId === selectedTheater)
+        filtered = filtered.filter((s) => s.cinemaId === selectedTheater)
       }
 
       setFilteredShowtimes(filtered)
@@ -87,6 +97,33 @@ export default function MovieDetail() {
     } else {
       return date.toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit" })
     }
+  }
+
+  const formatTime = (dateTimeString) => {
+    return new Date(dateTimeString).toLocaleTimeString('vi-VN', {
+      hour: '2-digit',
+      minute: '2-digit'
+    })
+  }
+
+  // Group showtimes by theater
+  const groupShowtimesByTheater = () => {
+    const grouped = {}
+    
+    filteredShowtimes.forEach(showtime => {
+      const theater = theaters.find(t => t.id === showtime.cinemaId)
+      if (theater) {
+        if (!grouped[theater.id]) {
+          grouped[theater.id] = {
+            theater: theater,
+            showtimes: []
+          }
+        }
+        grouped[theater.id].showtimes.push(showtime)
+      }
+    })
+    
+    return Object.values(grouped)
   }
 
   if (loading) {
@@ -114,7 +151,11 @@ export default function MovieDetail() {
     <div className="bg-[#0a1426] text-white min-h-screen">
       {/* Movie Backdrop */}
       <div className="relative w-full h-[50vh]">
-        <img src={movie.backdrop || movie.poster} alt={movie.title} className="w-full h-full object-cover opacity-30" />
+        <img 
+          src={movie.poster || "/placeholder.svg"} 
+          alt={movie.title} 
+          className="w-full h-full object-cover opacity-30" 
+        />
         <div className="absolute inset-0 bg-gradient-to-t from-[#0a1426] to-transparent"></div>
       </div>
 
@@ -125,31 +166,34 @@ export default function MovieDetail() {
           <div className="flex-shrink-0">
             <div className="relative w-64 h-96 rounded-lg overflow-hidden shadow-xl">
               <img src={movie.poster || "/placeholder.svg"} alt={movie.title} className="w-full h-full object-cover" />
-              {movie.ageRestriction && (
+              {movie.ageRating && (
                 <div className="absolute top-2 left-2 bg-red-600 text-white text-xs font-bold px-2 py-1 rounded">
-                  {movie.ageRestriction}
+                  {movie.ageRating}
                 </div>
               )}
             </div>
 
             <div className="mt-4 flex justify-center">
-              <Button className="w-full bg-yellow-500 hover:bg-yellow-600 text-black font-bold">Mua vé ngay</Button>
+              <Button 
+                className="w-full bg-yellow-500 hover:bg-yellow-600 text-black font-bold"
+                onClick={() => {
+                  // Scroll to showtimes section
+                  document.getElementById('showtimes-section')?.scrollIntoView({ behavior: 'smooth' })
+                }}
+              >
+                Mua vé ngay
+              </Button>
             </div>
           </div>
 
           {/* Movie Info */}
           <div className="flex-grow">
             <h1 className="text-3xl md:text-4xl font-bold mb-2">{movie.title}</h1>
-            {movie.originalTitle && <h2 className="text-xl text-gray-400 mb-4">{movie.originalTitle}</h2>}
+            {movie.originalTitle && movie.originalTitle !== movie.title && (
+              <h2 className="text-xl text-gray-400 mb-4">{movie.originalTitle}</h2>
+            )}
 
             <div className="flex flex-wrap gap-4 mb-6">
-              {movie.rating && (
-                <div className="flex items-center gap-1">
-                  <Star className="text-yellow-500" size={20} />
-                  <span>{movie.rating}/10</span>
-                </div>
-              )}
-
               <div className="flex items-center gap-1">
                 <Clock size={20} />
                 <span>{movie.duration} phút</span>
@@ -162,7 +206,7 @@ export default function MovieDetail() {
 
               <div className="flex items-center gap-1">
                 <Film size={20} />
-                <span>{movie.genre}</span>
+                <span>{Array.isArray(movie.genres) ? movie.genres.join(", ") : movie.genres}</span>
               </div>
             </div>
 
@@ -176,23 +220,25 @@ export default function MovieDetail() {
                 <h3 className="text-xl font-bold mb-2">Đạo diễn</h3>
                 <div className="flex items-center gap-2">
                   <User size={20} />
-                  <span>{movie.director}</span>
+                  <span>{Array.isArray(movie.directors) ? movie.directors.join(", ") : movie.directors}</span>
                 </div>
               </div>
 
-              <div>
-                <h3 className="text-xl font-bold mb-2">Diễn viên</h3>
-                <div className="flex items-center gap-2">
-                  <Users size={20} />
-                  <span>{movie.cast.join(", ")}</span>
+              {movie.cast && (
+                <div>
+                  <h3 className="text-xl font-bold mb-2">Diễn viên</h3>
+                  <div className="flex items-center gap-2">
+                    <Users size={20} />
+                    <span>{Array.isArray(movie.cast) ? movie.cast.join(", ") : "Đang cập nhật"}</span>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           </div>
         </div>
 
         {/* Trailer and Showtimes */}
-        <div className="mt-12">
+        <div className="mt-12" id="showtimes-section">
           <Tabs defaultValue="showtimes">
             <TabsList className="w-full max-w-md mx-auto">
               <TabsTrigger value="showtimes" className="flex-1">
@@ -243,36 +289,27 @@ export default function MovieDetail() {
                   </div>
                 </div>
 
-                {filteredShowtimes.length > 0 ? (
+                {groupShowtimesByTheater().length > 0 ? (
                   <div className="space-y-6">
-                    {theaters
-                      .filter((theater) => !selectedTheater || theater.id === selectedTheater)
-                      .map((theater) => {
-                        const theaterShowtimes = filteredShowtimes.filter((s) => s.theaterId === theater.id)
-                        if (theaterShowtimes.length === 0) return null
+                    {groupShowtimesByTheater().map(({ theater, showtimes: theaterShowtimes }) => (
+                      <div key={theater.id} className="border border-gray-800 rounded-lg p-4">
+                        <h3 className="text-xl font-bold mb-4">{theater.name}</h3>
+                        <p className="text-gray-400 text-sm mb-4">{theater.address}</p>
 
-                        return (
-                          <div key={theater.id} className="border border-gray-800 rounded-lg p-4">
-                            <h3 className="text-xl font-bold mb-4">{theater.name}</h3>
-                            <p className="text-gray-400 text-sm mb-4">{theater.address}</p>
-
-                            {/* Hiển thị thời gian chiếu luôn không cần hover */}
-                            <div className="flex flex-wrap gap-3">
-                              {theaterShowtimes.map((showtime) => (
-                                <Button
-                                  key={showtime.id}
-                                  variant="outline"
-                                  className="border border-gray-600 hover:bg-yellow-500 hover:text-black bg-transparent text-white"
-                                  onClick={() => handleBookTicket(showtime.id)}
-                                >
-                                  {showtime.startTime}
-                                </Button>
-                              ))}
-                            </div>
-                          </div>
-                        )
-                      })
-                      .filter(Boolean)}
+                        <div className="flex flex-wrap gap-3">
+                          {theaterShowtimes.map((showtime) => (
+                            <Button
+                              key={showtime.id}
+                              variant="outline"
+                              className="border border-gray-600 hover:bg-yellow-500 hover:text-black bg-transparent text-white"
+                              onClick={() => handleBookTicket(showtime.id)}
+                            >
+                              {formatTime(showtime.showDateTime)}
+                            </Button>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 ) : (
                   <div className="text-center py-8">

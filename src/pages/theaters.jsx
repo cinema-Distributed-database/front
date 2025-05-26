@@ -25,16 +25,34 @@ export default function TheatersPage() {
           // Nếu có tọa độ, gọi API để lấy rạp gần đó
           setUserLocation({ lat: parseFloat(lat), lng: parseFloat(lng) });
           
-          // Gọi API backend với tọa độ
-          const nearbyTheaters = await fetchNearbyTheaters(parseFloat(lat), parseFloat(lng));
-          setTheaters(nearbyTheaters);
+          const nearbyTheaters = await fetchNearbyTheaters(
+            parseFloat(lat), 
+            parseFloat(lng), 
+            10 // radius 10km
+          );
+          
+          // Tính toán khoảng cách cho mỗi rạp
+          const theatersWithDistance = nearbyTheaters.map(theater => {
+            if (theater.location && theater.location.coordinates) {
+              const [theLng, theLat] = theater.location.coordinates;
+              const distance = calculateDistance(
+                parseFloat(lat), parseFloat(lng),
+                theLat, theLng
+              );
+              return { ...theater, distance };
+            }
+            return theater;
+          });
+          
+          setTheaters(theatersWithDistance);
         } else {
           // Nếu không có tọa độ, lấy tất cả rạp
           const allTheaters = await fetchTheaters();
-          setTheaters(allTheaters);
+          setTheaters(allTheaters || []);
         }
       } catch (error) {
         console.error("Error loading theaters:", error);
+        setTheaters([]);
       } finally {
         setLoading(false);
       }
@@ -42,6 +60,24 @@ export default function TheatersPage() {
 
     loadTheaters();
   }, [lat, lng]);
+
+  // Hàm tính khoảng cách giữa 2 điểm (Haversine formula)
+  const calculateDistance = (lat1, lon1, lat2, lon2) => {
+    const R = 6371; // Radius of the Earth in kilometers
+    const dLat = deg2rad(lat2 - lat1);
+    const dLon = deg2rad(lon2 - lon1);
+    const a = 
+      Math.sin(dLat/2) * Math.sin(dLat/2) +
+      Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) * 
+      Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    const distance = R * c; // Distance in kilometers
+    return distance;
+  };
+
+  const deg2rad = (deg) => {
+    return deg * (Math.PI/180);
+  };
 
   if (loading) {
     return (
@@ -68,43 +104,100 @@ export default function TheatersPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {theaters.map((theater) => (
-          <Card key={theater.id} className="bg-gray-900 border-gray-800 overflow-hidden">
-            <div className="h-48 overflow-hidden">
-              <img 
-                src={theater.image || "/placeholder.svg?height=300&width=500&text=" + theater.name} 
-                alt={theater.name} 
-                className="w-full h-full object-cover"
-              />
-            </div>
-            <CardHeader>
-              <CardTitle>{theater.name}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-start gap-2 mb-4">
-                <MapPin size={18} className="flex-shrink-0 mt-0.5" />
-                <p className="text-gray-300">{theater.address}</p>
+      {theaters.length === 0 ? (
+        <div className="text-center py-12">
+          <p className="text-gray-400 text-lg">Không tìm thấy rạp chiếu phim nào.</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {theaters.map((theater) => (
+            <Card key={theater.id} className="bg-gray-900 border-gray-800 overflow-hidden">
+              <div className="h-48 overflow-hidden">
+                <img 
+                  src={theater.image || "/placeholder.svg?height=300&width=500&text=" + encodeURIComponent(theater.name)} 
+                  alt={theater.name} 
+                  className="w-full h-full object-cover"
+                />
               </div>
-              
-              {userLocation && theater.distance !== undefined && (
-                <div className="flex items-center gap-2 mb-4 bg-purple-900/50 p-2 rounded">
-                  <Navigation size={18} className="text-purple-400" />
-                  <p>Khoảng cách: <span className="font-bold">{theater.distance.toFixed(1)} km</span></p>
+              <CardHeader>
+                <CardTitle className="text-lg">{theater.name}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-start gap-2 mb-4">
+                  <MapPin size={18} className="flex-shrink-0 mt-0.5" />
+                  <p className="text-gray-300 text-sm">{theater.address}</p>
                 </div>
-              )}
-              
-              <div className="mt-4">
-                <Link to={`/theaters/${theater.id}`}>
-                  <Button className="w-full bg-yellow-500 hover:bg-yellow-600 text-black font-bold">
-                    Xem Lịch Chiếu
-                  </Button>
-                </Link>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+                
+                {/* Contact Info */}
+                {theater.contact && (
+                  <div className="mb-4">
+                    {theater.contact.phone && (
+                      <p className="text-sm text-gray-400">
+                        <span className="font-medium">Điện thoại:</span> {theater.contact.phone}
+                      </p>
+                    )}
+                    {theater.contact.email && (
+                      <p className="text-sm text-gray-400">
+                        <span className="font-medium">Email:</span> {theater.contact.email}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {/* Amenities */}
+                {theater.amenities && theater.amenities.length > 0 && (
+                  <div className="mb-4">
+                    <p className="text-sm font-medium text-gray-300 mb-2">Tiện ích:</p>
+                    <div className="flex flex-wrap gap-1">
+                      {theater.amenities.slice(0, 3).map((amenity, index) => (
+                        <span 
+                          key={index}
+                          className="px-2 py-1 bg-purple-900/50 text-purple-300 text-xs rounded-full"
+                        >
+                          {amenity}
+                        </span>
+                      ))}
+                      {theater.amenities.length > 3 && (
+                        <span className="px-2 py-1 bg-gray-700 text-gray-300 text-xs rounded-full">
+                          +{theater.amenities.length - 3} khác
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Room Count */}
+                {theater.roomCount && (
+                  <div className="mb-4">
+                    <p className="text-sm text-gray-400">
+                      <Film size={16} className="inline mr-1" />
+                      {theater.roomCount} phòng chiếu
+                    </p>
+                  </div>
+                )}
+                
+                {/* Distance if available */}
+                {userLocation && theater.distance !== undefined && (
+                  <div className="flex items-center gap-2 mb-4 bg-purple-900/50 p-2 rounded">
+                    <Navigation size={18} className="text-purple-400" />
+                    <p className="text-sm">
+                      Khoảng cách: <span className="font-bold text-purple-300">{theater.distance.toFixed(1)} km</span>
+                    </p>
+                  </div>
+                )}
+                
+                <div className="mt-4">
+                  <Link to={`/movies?cinema=${theater.id}`}>
+                    <Button className="w-full bg-yellow-500 hover:bg-yellow-600 text-black font-bold">
+                      Xem Lịch Chiếu
+                    </Button>
+                  </Link>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
