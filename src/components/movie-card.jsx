@@ -41,7 +41,7 @@ export default function MovieCard({ movie }) {
 
         <div className="flex justify-between">
           <Link to={`/movies/${movie.id}`}>
-            <Button variant="outline" size="sm">
+            <Button variant="outline" size="sm" className="text-black hover:bg-gray-300">
               Chi tiết
             </Button>
           </Link>
