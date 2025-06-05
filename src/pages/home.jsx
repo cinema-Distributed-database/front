@@ -1,201 +1,220 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Link } from "react-router-dom"
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { Link, useNavigate } from "react-router-dom"
+import { ChevronLeft, ChevronRight, Ticket } from 'lucide-react'
 import { Button } from "../components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select"
 import MovieCard from "../components/movie-card"
-import { fetchMovies, fetchTheaters, fetchShowtimes } from "../lib/api"
+import { fetchMovies, fetchTheaters, fetchShowtimes, fetchNowShowingMovies, fetchComingSoonMovies } from "../lib/api"
+// import { handleApiError } from "../lib/api" //  handleApiError đã được tích hợp trong các hàm fetch
 
 export default function HomePage() {
   const [currentSlide, setCurrentSlide] = useState(0)
-  const [movies, setMovies] = useState([])
+  const [nowShowingMovies, setNowShowingMovies] = useState([])
+  const [comingSoonMovies, setComingSoonMovies] = useState([])
+  const [allMoviesForFilter, setAllMoviesForFilter] = useState([])
   const [theaters, setTheaters] = useState([])
-  const [showtimes, setShowtimes] = useState([])
+  const [showtimesForFilter, setShowtimesForFilter] = useState([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
   const [selectedTheater, setSelectedTheater] = useState("")
   const [selectedMovie, setSelectedMovie] = useState("")
   const [selectedDate, setSelectedDate] = useState("")
   const [selectedTime, setSelectedTime] = useState("")
+  const navigate = useNavigate();
 
   const banners = [
     {
       id: 1,
-      image: "/placeholder.svg?height=400&width=1200",
-      title: "Rạp xịn - Ghế chill",
+      image: "https://res.cloudinary.com/dgygvrrjs/image/upload/v1749139242/Screenshot_2025-06-05_222948_b28dbm.png",
+      alt: "Banner ưu đãi hấp dẫn",
       link: "/promotions/1",
     },
     {
       id: 2,
-      image: "/placeholder.svg?height=400&width=1200",
-      title: "Khuyến mãi đặc biệt",
-      link: "/promotions/2",
+      image: "https://res.cloudinary.com/dgygvrrjs/image/upload/v1749139763/Screenshot_2025-06-05_222822_gj7tdt.png",
+      alt: "Banner phim mới mỗi tuần",
+      link: "/movies",
     },
     {
       id: 3,
-      image: "/placeholder.svg?height=400&width=1200",
-      title: "Phim mới tháng 5",
-      link: "/promotions/3",
+      image: "https://res.cloudinary.com/dgygvrrjs/image/upload/v1749139341/Screenshot_2025-06-05_222429_xbq5tb.png",
+      alt: "Banner combo bắp nước",
+      link: "/concessions",
     },
-  ]
+  ];
 
   useEffect(() => {
-    const loadData = async () => {
+    const loadInitialData = async () => {
       try {
-        setLoading(true)
+        setLoading(true);
+        setError(null);
         
-        // Load movies và theaters song song
-        const [moviesData, theatersData] = await Promise.all([
-          fetchMovies(),
-          fetchTheaters()
-        ])
+        const [nowShowingRes, comingSoonRes, theatersRes, allMoviesRes] = await Promise.all([
+          fetchNowShowingMovies({ page: 0, size: 8 }),
+          fetchComingSoonMovies({ page: 0, size: 8 }),
+          fetchTheaters({ page: 0, size: 100 }), // Lấy nhiều rạp cho bộ lọc
+          fetchMovies({ page: 0, size: 100 })    // Lấy nhiều phim cho bộ lọc
+        ]);
         
-        setMovies(moviesData || [])
-        setTheaters(theatersData || [])
+        setNowShowingMovies(nowShowingRes || []);
+        setComingSoonMovies(comingSoonRes || []);
+        setTheaters(theatersRes || []);
+        setAllMoviesForFilter(allMoviesRes || []);
         
-        // Set default date to today
-        const today = new Date().toISOString().split('T')[0]
-        setSelectedDate(today)
+        const today = new Date().toISOString().split('T')[0];
+        setSelectedDate(today);
         
-      } catch (error) {
-        console.error('Error loading data:', error)
+      } catch (apiError) {
+        console.error('Error loading initial data:', apiError);
+        setError(apiError.message || 'Không thể tải dữ liệu trang chủ. Vui lòng thử lại.');
       } finally {
-        setLoading(false)
+        setLoading(false);
       }
     }
 
-    loadData()
+    loadInitialData();
 
-    // Auto slide for banner
     const interval = setInterval(() => {
-      setCurrentSlide((prev) => (prev + 1) % banners.length)
-    }, 5000)
+      setCurrentSlide((prev) => (prev + 1) % banners.length);
+    }, 5000); // Thời gian chuyển slide: 5 giây
 
-    return () => clearInterval(interval)
-  }, [])
+    return () => clearInterval(interval);
+  }, []);
 
-  // Load showtimes when filters change
   useEffect(() => {
-    const loadShowtimes = async () => {
-      if (selectedTheater && selectedMovie && selectedDate) {
+    const loadShowtimesForFilter = async () => {
+      if (selectedMovie && selectedTheater && selectedDate) {
         try {
+          setError(null);
           const showtimesData = await fetchShowtimes({
             movieId: selectedMovie,
-            theaterId: selectedTheater,
+            cinemaId: selectedTheater,
             date: selectedDate
-          })
-          setShowtimes(showtimesData || [])
-        } catch (error) {
-          console.error('Error loading showtimes:', error)
-          setShowtimes([])
+          });
+          setShowtimesForFilter(showtimesData || []);
+        } catch (apiError) {
+          console.error('Error loading showtimes for filter:', apiError);
+          // setError(apiError.message || 'Không thể tải suất chiếu cho bộ lọc.'); // Có thể không cần báo lỗi ở đây để tránh làm phiền
+          setShowtimesForFilter([]);
         }
+      } else {
+        setShowtimesForFilter([]);
+        setSelectedTime("");
       }
     }
 
-    loadShowtimes()
-  }, [selectedTheater, selectedMovie, selectedDate])
+    loadShowtimesForFilter();
+  }, [selectedMovie, selectedTheater, selectedDate]);
 
   const nextSlide = () => {
-    setCurrentSlide((prev) => (prev + 1) % banners.length)
+    setCurrentSlide((prev) => (prev + 1) % banners.length);
   }
 
   const prevSlide = () => {
-    setCurrentSlide((prev) => (prev - 1 + banners.length) % banners.length)
+    setCurrentSlide((prev) => (prev - 1 + banners.length) % banners.length);
   }
 
   const handleBookTicket = () => {
-    if (selectedTheater && selectedMovie && selectedDate && selectedTime) {
-      // Tìm showtime ID dựa trên selections
-      const showtime = showtimes.find(st => 
-        st.movieId === selectedMovie && 
-        st.cinemaId === selectedTheater && 
-        st.showDateTime.includes(selectedDate) &&
-        st.showDateTime.includes(selectedTime)
-      )
+    if (selectedMovie && selectedTheater && selectedDate && selectedTime) {
+      const showtime = showtimesForFilter.find(st => {
+        const stTime = new Date(st.showDateTime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+        return stTime === selectedTime;
+      });
       
       if (showtime) {
-        window.location.href = `/booking?showtime=${showtime.id}`
+        navigate(`/booking?showtime=${showtime.id}`);
       } else {
-        alert("Không tìm thấy suất chiếu phù hợp")
+        alert("Không tìm thấy suất chiếu phù hợp. Vui lòng kiểm tra lại.");
       }
     } else {
-      alert("Vui lòng chọn đầy đủ thông tin để đặt vé")
+      alert("Vui lòng chọn đầy đủ thông tin: Phim, Rạp, Ngày và Suất chiếu.");
     }
   }
 
-  // Generate time slots based on selected filters
   const getAvailableTimes = () => {
-    if (!selectedTheater || !selectedMovie || !selectedDate) return []
+    if (!selectedMovie || !selectedTheater || !selectedDate || showtimesForFilter.length === 0) return [];
     
-    return showtimes
-      .filter(st => 
-        st.movieId === selectedMovie && 
-        st.cinemaId === selectedTheater && 
-        st.showDateTime.includes(selectedDate)
-      )
+    return showtimesForFilter
       .map(st => {
         const time = new Date(st.showDateTime).toLocaleTimeString('vi-VN', {
           hour: '2-digit',
           minute: '2-digit'
-        })
+        });
         return {
           value: time,
           label: time,
           showtimeId: st.id
-        }
+        };
       })
+      .filter((item, index, self) =>
+        index === self.findIndex((t) => (t.value === item.value))
+      )
+      .sort((a,b) => a.label.localeCompare(b.label));
   }
 
-  // Generate date options (next 7 days)
   const getDateOptions = () => {
-    const dates = []
-    const today = new Date()
-    
+    const dates = [];
+    const today = new Date();
     for (let i = 0; i < 7; i++) {
-      const date = new Date(today)
-      date.setDate(today.getDate() + i)
-      const dateString = date.toISOString().split('T')[0]
+      const date = new Date(today);
+      date.setDate(today.getDate() + i);
+      const dateString = date.toISOString().split('T')[0];
       const label = i === 0 ? 'Hôm nay' : i === 1 ? 'Ngày mai' : 
-        date.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })
-      
+        date.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
       dates.push({
         value: dateString,
         label: `${label} (${date.toLocaleDateString('vi-VN', { weekday: 'short' })})`
-      })
+      });
     }
-    
-    return dates
+    return dates;
   }
 
   if (loading) {
     return (
-      <div className="bg-[#0a1426] text-white min-h-screen flex items-center justify-center">
+      <div className="bg-[#0a1426] text-white min-h-[calc(100vh-200px)] flex flex-col items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-yellow-500 mx-auto"></div>
-          <p className="mt-4 text-lg">Đang tải dữ liệu...</p>
+          <svg className="animate-spin h-16 w-16 text-yellow-500 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+          <p className="mt-4 text-lg font-semibold">Đang tải dữ liệu, vui lòng chờ...</p>
         </div>
       </div>
-    )
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="container mx-auto py-20 px-4 text-center min-h-[calc(100vh-200px)] flex flex-col justify-center items-center">
+        <h2 className="text-3xl font-bold text-red-500 mb-6">Rất tiếc, đã có lỗi xảy ra!</h2>
+        <p className="text-gray-300 mb-8 text-lg">{error}</p>
+        <Button 
+          onClick={() => window.location.reload()}
+          className="bg-yellow-500 hover:bg-yellow-600 text-black font-bold"
+        >
+          Thử lại
+        </Button>
+      </div>
+    );
   }
 
   return (
-    <div className="bg-[#0a1426] text-white">
-      {/* Banner Carousel */}
-      <div className="relative overflow-hidden">
+    <div className="bg-[#100C2A] text-white"> 
+      <div className="relative overflow-hidden h-[35vh] sm:h-[40vh] md:h-[45vh] max-h-[480px] w-full">
         <div
-          className="flex transition-transform duration-500 ease-in-out"
+          className="flex transition-transform duration-700 ease-in-out h-full"
           style={{ transform: `translateX(-${currentSlide * 100}%)` }}
         >
           {banners.map((banner) => (
-            <div key={banner.id} className="w-full flex-shrink-0">
+            <div key={banner.id} className="w-full h-[60vh] flex-shrink-0 relative">
               <Link to={banner.link}>
-                <div className="relative">
-                  <img src={banner.image || "/placeholder.svg"} alt={banner.title} className="w-full object-cover" />
-                  <div className="absolute bottom-8 right-8">
-                    <Button className="bg-yellow-400 hover:bg-yellow-500 text-black font-bold">ĐẶT VÉ NGAY</Button>
-                  </div>
-                </div>
+                <img 
+                  src={banner.image} 
+                  alt={banner.alt} 
+                  className="w-full h-full object-cover" 
+                />
               </Link>
             </div>
           ))}
@@ -203,149 +222,144 @@ export default function HomePage() {
 
         <button
           onClick={prevSlide}
-          className="absolute left-4 top-1/2 transform -translate-y-1/2 bg-black/50 p-2 rounded-full"
+          className="absolute left-2 sm:left-4 top-1/2 transform -translate-y-1/2 bg-black/30 hover:bg-black/60 p-2 sm:p-3 rounded-full transition-colors duration-300 z-10"
+          aria-label="Previous slide"
         >
-          <ChevronLeft size={24} />
+          <ChevronLeft size={24} sm={28} />
         </button>
 
         <button
           onClick={nextSlide}
-          className="absolute right-4 top-1/2 transform -translate-y-1/2 bg-black/50 p-2 rounded-full"
+          className="absolute right-2 sm:right-4 top-1/2 transform -translate-y-1/2 bg-black/30 hover:bg-black/60 p-2 sm:p-3 rounded-full transition-colors duration-300 z-10"
+          aria-label="Next slide"
         >
-          <ChevronRight size={24} />
+          <ChevronRight size={24} sm={28} />
         </button>
 
-        <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex gap-2">
+        <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex gap-2 z-10">
           {banners.map((_, index) => (
             <button
               key={index}
-              className={`w-3 h-3 rounded-full ${index === currentSlide ? "bg-white" : "bg-white/50"}`}
+              className={`w-2.5 h-2.5 rounded-full transition-all duration-300 ${index === currentSlide ? "bg-yellow-500 scale-125" : "bg-white/60 hover:bg-white/90"}`}
               onClick={() => setCurrentSlide(index)}
+              aria-label={`Go to slide ${index + 1}`}
             />
           ))}
         </div>
       </div>
 
-      {/* Quick Booking */}
-      <div className="container mx-auto my-8 px-4">
-        <div className="bg-gray-900 rounded-lg p-6">
-          <div className="flex flex-col md:flex-row items-center gap-4">
-            <div className="text-xl font-bold text-yellow-500 whitespace-nowrap">ĐẶT VÉ NHANH</div>
-
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 flex-grow">
-              <Select value={selectedTheater} onValueChange={setSelectedTheater}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="1. Chọn Rạp" />
-                </SelectTrigger>
-                <SelectContent>
-                  {theaters.map((theater) => (
-                    <SelectItem key={theater.id} value={theater.id}>
-                      {theater.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
+      {/* Quick Booking Section - Giữ lại vì hữu ích, có thể ẩn nếu không muốn */}
+       <div className="container mx-auto my-10 px-4">
+        <div className="bg-gray-800/70 backdrop-blur-sm rounded-lg p-6 shadow-lg">
+          <div className="flex items-center gap-3 mb-5">
+            <Ticket className="text-yellow-400" size={28} />
+            <h2 className="text-xl md:text-2xl font-semibold text-yellow-400">Đặt Vé Nhanh</h2>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end">
+            {/* Selectors for Movie, Theater, Date, Time */}
+            <div className="flex-grow">
+              <label htmlFor="movieFilter" className="block text-xs font-medium mb-1 text-gray-300">Phim</label>
               <Select value={selectedMovie} onValueChange={setSelectedMovie}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="2. Chọn Phim" />
+                <SelectTrigger id="movieFilter" className="w-full bg-gray-700 border-gray-600 text-sm">
+                  <SelectValue placeholder="Chọn phim" />
                 </SelectTrigger>
-                <SelectContent>
-                  {movies.map((movie) => (
-                    <SelectItem key={movie.id} value={movie.id}>
-                      {movie.title}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
-              <Select value={selectedDate} onValueChange={setSelectedDate}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="3. Chọn Ngày" />
-                </SelectTrigger>
-                <SelectContent>
-                  {getDateOptions().map((date) => (
-                    <SelectItem key={date.value} value={date.value}>
-                      {date.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
-              <Select value={selectedTime} onValueChange={setSelectedTime}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="4. Chọn Suất" />
-                </SelectTrigger>
-                <SelectContent>
-                  {getAvailableTimes().map((time) => (
-                    <SelectItem key={time.value} value={time.value}>
-                      {time.label}
-                    </SelectItem>
+                <SelectContent className="bg-gray-700 border-gray-600">
+                  {allMoviesForFilter.map((movie) => (
+                    <SelectItem key={movie.id} value={movie.id} className="hover:bg-gray-600 text-sm">{movie.title}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
-
+             <div className="flex-grow">
+              <label htmlFor="theaterFilter" className="block text-xs font-medium mb-1 text-gray-300">Rạp</label>
+              <Select value={selectedTheater} onValueChange={setSelectedTheater}>
+                <SelectTrigger id="theaterFilter" className="w-full bg-gray-700 border-gray-600 text-sm">
+                  <SelectValue placeholder="Chọn rạp" />
+                </SelectTrigger>
+                <SelectContent className="bg-gray-700 border-gray-600">
+                  {theaters.map((theater) => (
+                    <SelectItem key={theater.id} value={theater.id} className="hover:bg-gray-600 text-sm">{theater.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex-grow">
+              <label htmlFor="dateFilter" className="block text-xs font-medium mb-1 text-gray-300">Ngày</label>
+              <Select value={selectedDate} onValueChange={setSelectedDate}>
+                <SelectTrigger id="dateFilter" className="w-full bg-gray-700 border-gray-600 text-sm">
+                  <SelectValue placeholder="Chọn ngày" />
+                </SelectTrigger>
+                <SelectContent className="bg-gray-700 border-gray-600">
+                  {getDateOptions().map((date) => (
+                    <SelectItem key={date.value} value={date.value} className="hover:bg-gray-600 text-sm">{date.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex-grow">
+              <label htmlFor="timeFilter" className="block text-xs font-medium mb-1 text-gray-300">Suất chiếu</label>
+              <Select value={selectedTime} onValueChange={setSelectedTime} disabled={getAvailableTimes().length === 0}>
+                <SelectTrigger id="timeFilter" className="w-full bg-gray-700 border-gray-600 text-sm">
+                  <SelectValue placeholder={getAvailableTimes().length === 0 ? "Hết suất" : "Chọn suất"} />
+                </SelectTrigger>
+                <SelectContent className="bg-gray-700 border-gray-600">
+                  {getAvailableTimes().map((time) => (
+                    <SelectItem key={time.value} value={time.value} className="hover:bg-gray-600 text-sm">{time.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <Button
-              className="bg-yellow-500 hover:bg-yellow-600 text-black font-bold whitespace-nowrap"
+              className="w-full bg-yellow-500 hover:bg-yellow-600 text-black font-bold disabled:bg-gray-500 disabled:cursor-not-allowed py-2.5 text-sm"
               onClick={handleBookTicket}
               disabled={!selectedTheater || !selectedMovie || !selectedDate || !selectedTime}
             >
-              ĐẶT NGAY
+              Mua Vé
             </Button>
           </div>
         </div>
       </div>
 
-      {/* Now Showing */}
+      {/* Now Showing Section - Giống image_b7370c.png */}
       <div className="container mx-auto my-12 px-4">
-        <h2 className="text-3xl font-bold text-center mb-8">PHIM ĐANG CHIẾU</h2>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-          {movies
-            .filter(movie => movie.status === 'now-showing')
-            .map((movie) => (
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-2xl md:text-3xl font-semibold text-white">Phim Đang Chiếu</h2>
+          <Link to="/movies?status=now-showing">
+            <Button variant="outline" className="text-yellow-400 border-yellow-400 hover:bg-yellow-400 hover:text-black text-xs px-3 py-1 h-auto">
+              Xem Tất Cả
+            </Button>
+          </Link>
+        </div>
+        {nowShowingMovies.length > 0 ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-5">
+            {nowShowingMovies.map((movie) => (
               <MovieCard key={movie.id} movie={movie} />
             ))}
-        </div>
+          </div>
+        ) : (
+          <p className="text-center text-gray-400 py-8">Hiện không có phim nào đang chiếu.</p>
+        )}
       </div>
 
-      {/* Coming Soon */}
+      {/* Coming Soon Section - Giống image_b7370c.png */}
       <div className="container mx-auto my-12 px-4">
-        <h2 className="text-3xl font-bold text-center mb-8">PHIM SẮP CHIẾU</h2>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-          {movies
-            .filter(movie => movie.status === 'coming-soon')
-            .slice(0, 4)
-            .map((movie) => (
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-2xl md:text-3xl font-semibold text-white">Phim Sắp Chiếu</h2>
+          <Link to="/movies?status=coming-soon">
+            <Button variant="outline" className="text-purple-400 border-purple-400 hover:bg-purple-400 hover:text-black text-xs px-3 py-1 h-auto">
+              Xem Tất Cả
+            </Button>
+          </Link>
+        </div>
+        {comingSoonMovies.length > 0 ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-5">
+            {comingSoonMovies.map((movie) => (
               <MovieCard key={`coming-${movie.id}`} movie={{ ...movie, isComingSoon: true }} />
             ))}
-        </div>
-      </div>
-
-      {/* Promotions */}
-      <div className="container mx-auto my-12 px-4">
-        <h2 className="text-3xl font-bold text-center mb-8">KHUYẾN MÃI</h2>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {[1, 2, 3].map((promo) => (
-            <div key={promo} className="bg-gray-900 rounded-lg overflow-hidden">
-              <img
-                src={`/placeholder.svg?height=200&width=400&text=Khuyến mãi ${promo}`}
-                alt={`Khuyến mãi ${promo}`}
-                className="w-full object-cover"
-              />
-              <div className="p-4">
-                <h3 className="text-xl font-bold mb-2">Khuyến mãi đặc biệt {promo}</h3>
-                <p className="text-sm text-gray-400 mb-4">Mô tả ngắn về chương trình khuyến mãi đặc biệt.</p>
-                <Link to={`/promotions/${promo}`}>
-                  <Button variant="outline">Xem chi tiết</Button>
-                </Link>
-              </div>
-            </div>
-          ))}
-        </div>
+          </div>
+        ) : (
+           <p className="text-center text-gray-400 py-8">Chưa có thông tin phim sắp chiếu.</p>
+        )}
       </div>
     </div>
   )
