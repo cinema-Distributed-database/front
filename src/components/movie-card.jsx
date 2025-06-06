@@ -1,57 +1,94 @@
-import { Link } from "react-router-dom"
-import { Button } from "./ui/button"
-import { Badge } from "./ui/badge"
+import { Link } from "react-router-dom";
+import { Button } from "./ui/button";
+import { Film, Clock, Globe, Languages, PlayCircle } from 'lucide-react';
 
 export default function MovieCard({ movie }) {
+  // Dữ liệu mẫu để hiển thị trong trường hợp movie prop không có
+  const movieData = {
+    ...movie,
+    country: movie.country || "Hàn Quốc", // Giả sử quốc gia mặc định
+  };
+
   return (
-    <div className="bg-gray-900 rounded-lg overflow-hidden group">
-      <Link to={`/movies/${movie.id}`}>
-        <div className="relative">
+    <div className="group relative flex flex-col font-sans">
+      {/* Phần hình ảnh và overlay khi hover */}
+      <div className="relative overflow-hidden rounded-lg shadow-lg">
+        <Link to={`/movies/${movieData.id}`} className="block">
+          {/* Ảnh Poster */}
           <img
-            src={movie.poster || "/placeholder.svg"}
-            alt={movie.title}
-            className="w-full object-cover transition-transform duration-300 group-hover:scale-105"
+            src={movieData.poster || "/placeholder.svg"}
+            alt={movieData.title}
+            className="w-full h-auto object-cover transition-transform duration-300 ease-in-out group-hover:scale-105"
+            style={{ aspectRatio: '2/3' }} // Giữ tỷ lệ khung hình
           />
 
-          {movie.ageRestriction && (
-            <div className="absolute top-2 left-2 bg-red-600 text-white text-xs font-bold px-2 py-1 rounded">
-              {movie.ageRestriction}
+          {/* Nhãn giới hạn độ tuổi */}
+          {movieData.ageRestriction && (
+            <div className="absolute top-2 left-2 bg-red-600 text-white text-xs font-bold w-9 h-9 flex items-center justify-center rounded-md">
+              {movieData.ageRestriction}
             </div>
           )}
 
-          {movie.isComingSoon && <Badge className="absolute top-2 right-2 bg-purple-600">Sắp chiếu</Badge>}
-
-          <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-4">
-            <h3 className="text-lg font-bold mb-1">{movie.title}</h3>
-            <p className="text-sm text-gray-300 mb-2">{movie.genre}</p>
-            <p className="text-sm text-gray-300 mb-4">
-              <span className="font-bold">Thời lượng:</span> {movie.duration} phút
-            </p>
-
+          {/* Overlay hiển thị khi hover */}
+          <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/70 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-4">
+            <h3 className="text-xl font-bold text-white mb-7 line-clamp-2 ">{movieData.title}</h3>
+            
+            <div className="space-y-1.5 text-xs text-gray-300 mb-20">
+              <div className="flex items-center gap-2">
+                <Film size={14} />
+                <span>
+                  {movieData.genres ? movieData.genres.join(', ') : "Hành động, Phiêu lưu"}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Clock size={14} />
+                <span>{movieData.duration} phút</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Globe size={14} />
+                <span>{movieData.country}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Languages size={14} />
+                <span>{movieData.subtitles}</span>
+              </div>
+            </div>
           </div>
-        </div>
-      </Link>
+        </Link>
+      </div>
 
-      <div className="p-4">
-        <h3 className="text-lg font-bold mb-1 line-clamp-1">{movie.title}</h3>
-        <p className="text-sm text-gray-400 mb-3 line-clamp-1">{movie.genre}</p>
+      {/* Phần thông tin và nút bấm luôn hiển thị */}
+      <div className="mt-3 text-center">
+        <h3 className="text-sm font-semibold uppercase text-white truncate px-2" title={movieData.title}>
+          {movieData.title}
+        </h3>
 
-        <div className="flex justify-between">
-          <Link to={`/movies/${movie.id}`}>
-            <Button variant="outline" size="sm" className="text-black hover:bg-gray-300">
-              Chi tiết
-            </Button>
-          </Link>
+        <div className="flex justify-center gap-2 mt-3">
+          {movieData.trailer && (
+            <a
+              href={movieData.trailer}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-transparent h-9 px-3 border-gray-600 text-gray-300 hover:bg-gray-800 hover:text-white text-xs"
+            >
+              <PlayCircle size={14} className="mr-1.5" />
+              Xem Trailer
+            </a>
+          )}
 
-          {!movie.isComingSoon && (
-            <Link to={`/booking?movie=${movie.id}`}>
-              <Button size="sm" className="bg-yellow-500 hover:bg-yellow-600 text-black">
-                Mua vé
+          {!movieData.isComingSoon ? (
+            <Link to={`/movies/${movieData.id}`}>
+              <Button size="sm" className="bg-yellow-400 hover:bg-yellow-500 text-black font-bold text-xs px-5">
+                ĐẶT VÉ
               </Button>
             </Link>
+          ) : (
+            <Button size="sm" disabled className="bg-gray-600 text-gray-400 font-bold text-xs px-5">
+              SẮP CHIẾU
+            </Button>
           )}
         </div>
       </div>
     </div>
-  )
+  );
 }
