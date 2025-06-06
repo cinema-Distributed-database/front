@@ -23,38 +23,40 @@ export default function Header() {
       return;
     }
 
-    // Hiển thị thông báo đang tìm kiếm
     setIsLocating(true);
 
     navigator.geolocation.getCurrentPosition(
       (position) => {
         const { latitude, longitude } = position.coords;
-        
-        // Chuyển hướng đến trang theaters với tham số vị trí
         navigate(`/theaters?lat=${latitude}&lng=${longitude}`);
         setIsLocating(false);
       },
       (error) => {
         setIsLocating(false);
+        
+        let errorMessage = "Đã xảy ra lỗi không xác định khi định vị.";
+
         switch (error.code) {
           case error.PERMISSION_DENIED:
-            alert("Người dùng từ chối truy cập vị trí.");
+            errorMessage = "Bạn đã từ chối quyền truy cập vị trí. Vui lòng cấp quyền trong cài đặt trình duyệt để sử dụng tính năng này.";
             break;
           case error.POSITION_UNAVAILABLE:
-            alert("Thông tin vị trí không khả dụng.");
+            errorMessage = "Không thể xác định vị trí của bạn. Vui lòng kiểm tra kết nối mạng và đảm bảo dịch vụ định vị đã được bật.";
             break;
           case error.TIMEOUT:
-            alert("Yêu cầu vị trí đã hết thời gian chờ.");
+            errorMessage = "Yêu cầu vị trí đã hết thời gian chờ. Vui lòng thử lại.";
             break;
           default:
-            alert("Đã xảy ra lỗi không xác định khi định vị.");
+            // Cung cấp thông báo gợi ý chung chung hơn
+            errorMessage = "Không thể lấy vị trí. Vui lòng kiểm tra quyền truy cập vị trí cho trình duyệt và đảm bảo bạn có kết nối mạng ổn định.";
             break;
         }
+        // alert(errorMessage);
       },
       { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
     );
   };
-
+  
   return (
     <header className="w-full">
 

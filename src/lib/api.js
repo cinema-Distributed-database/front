@@ -190,7 +190,7 @@ export async function fetchTheater(id) {
  * @param {number} radius - Bán kính tìm kiếm (km).
  * @returns {Promise<Array>} Mảng các rạp gần đó.
  */
-export async function fetchNearbyTheaters(latitude, longitude, radius = 10.0) {
+export async function fetchNearbyTheaters(latitude, longitude, radius = 1000.0) {
   try {
     // API này trả về trực tiếp mảng rạp trong trường 'data'
     return await apiClient.get('/cinemas/nearby', {

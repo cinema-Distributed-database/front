@@ -200,7 +200,7 @@ export default function HomePage() {
         <Button 
           onClick={() => window.location.reload()}
           className="bg-yellow-500 hover:bg-yellow-600 text-black font-bold"
-        >
+        > 
           Thử lại
         </Button>
       </div>
