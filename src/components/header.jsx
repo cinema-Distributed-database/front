@@ -52,6 +52,7 @@ export default function Header() {
             break;
         }
         // alert(errorMessage);
+        console.log("Error locating user:", errorMessage);
       },
       { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
     );
