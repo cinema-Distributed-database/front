@@ -28,9 +28,6 @@ export default function MovieCard({ movie }) {
               <span className="font-bold">Thời lượng:</span> {movie.duration} phút
             </p>
 
-            <Button className="w-full bg-yellow-500 hover:bg-yellow-600 text-black">
-              {movie.isComingSoon ? "Xem chi tiết" : "Mua vé ngay"}
-            </Button>
           </div>
         </div>
       </Link>

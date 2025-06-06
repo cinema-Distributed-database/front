@@ -5,8 +5,8 @@ export default function Footer() {
   return (
     <footer className="bg-[#060413] text-gray-300 pt-12 pb-8 border-t border-gray-800"> {/* Darker background */}
       <div className="container mx-auto px-4">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 mb-8">
-          <div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 mb-8 ml-20">
+          <div >
             <h3 className="text-lg font-semibold text-yellow-400 mb-4">CINESTAR</h3>
             <ul className="space-y-2 text-sm">
               <li><Link to="/about" className="hover:text-purple-400 transition-colors">Giới thiệu</Link></li>
@@ -35,7 +35,7 @@ export default function Footer() {
             </ul>
           </div>
 
-          <div>
+          <div className="ml-10">
             <h3 className="text-lg font-semibold text-yellow-400 mb-4">KẾT NỐI</h3>
             <div className="flex gap-4">
               <a href="https://facebook.com" target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-purple-500 transition-colors">
@@ -53,7 +53,6 @@ export default function Footer() {
 
         <div className="mt-8 pt-6 border-t border-gray-700/50 text-center text-xs text-gray-500">
           <p>&copy; {new Date().getFullYear()} CINESTAR CINEMAS. All Rights Reserved.</p>
-          <p className="mt-1">Website được phát triển để phục vụ mục đích học tập.</p>
         </div>
       </div>
     </footer>

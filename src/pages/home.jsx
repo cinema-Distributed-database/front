@@ -57,6 +57,7 @@ export default function HomePage() {
           fetchTheaters({ page: 0, size: 100 }), // Lấy nhiều rạp cho bộ lọc
           fetchMovies({ page: 0, size: 100 })    // Lấy nhiều phim cho bộ lọc
         ]);
+        console.log("Now Showing Movies:", nowShowingRes);
         
         setNowShowingMovies(nowShowingRes || []);
         setComingSoonMovies(comingSoonRes || []);
