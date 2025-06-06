@@ -7,7 +7,6 @@ import { Button } from "../components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select"
 import MovieCard from "../components/movie-card"
 import { fetchMovies, fetchTheaters, fetchShowtimes, fetchNowShowingMovies, fetchComingSoonMovies } from "../lib/api"
-// import { handleApiError } from "../lib/api" //  handleApiError đã được tích hợp trong các hàm fetch
 
 export default function HomePage() {
   const [currentSlide, setCurrentSlide] = useState(0)
@@ -23,6 +22,11 @@ export default function HomePage() {
   const [selectedDate, setSelectedDate] = useState("")
   const [selectedTime, setSelectedTime] = useState("")
   const navigate = useNavigate();
+
+  const [nowShowingPage, setNowShowingPage] = useState(0);
+  const [comingSoonPage, setComingSoonPage] = useState(0);
+
+  const MOVIES_PER_PAGE = 4;
 
   const banners = [
     {
@@ -52,13 +56,17 @@ export default function HomePage() {
         setError(null);
         
         const [nowShowingRes, comingSoonRes, theatersRes, allMoviesRes] = await Promise.all([
-          fetchNowShowingMovies({ page: 0, size: 8 }),
-          fetchComingSoonMovies({ page: 0, size: 8 }),
-          fetchTheaters({ page: 0, size: 100 }), // Lấy nhiều rạp cho bộ lọc
-          fetchMovies({ page: 0, size: 100 })    // Lấy nhiều phim cho bộ lọc
+          fetchNowShowingMovies({ page: 0, size: 20 }),
+          fetchComingSoonMovies({ page: 0, size: 20 }),
+          fetchTheaters({ page: 0, size: 100 }),
+          fetchMovies({ page: 0, size: 100 })
         ]);
-        console.log("Now Showing Movies:", nowShowingRes);
-        
+
+        console.log('Now Showing Movies:', nowShowingRes);
+        console.log('Coming Soon Movies:', comingSoonRes);
+        console.log('Theaters:', theatersRes);
+        console.log('All Movies for Filter:', allMoviesRes);
+
         setNowShowingMovies(nowShowingRes || []);
         setComingSoonMovies(comingSoonRes || []);
         setTheaters(theatersRes || []);
@@ -79,16 +87,19 @@ export default function HomePage() {
 
     const interval = setInterval(() => {
       setCurrentSlide((prev) => (prev + 1) % banners.length);
-    }, 5000); // Thời gian chuyển slide: 5 giây
+    }, 5000);
 
     return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
-    const loadShowtimesForFilter = async () => {
-      if (selectedMovie && selectedTheater && selectedDate) {
+    // Reset lựa chọn suất chiếu khi các lựa chọn cha thay đổi
+    setSelectedTime("");
+    setShowtimesForFilter([]);
+
+    if (selectedMovie && selectedTheater && selectedDate) {
+      const loadShowtimesForFilter = async () => {
         try {
-          setError(null);
           const showtimesData = await fetchShowtimes({
             movieId: selectedMovie,
             cinemaId: selectedTheater,
@@ -97,17 +108,28 @@ export default function HomePage() {
           setShowtimesForFilter(showtimesData || []);
         } catch (apiError) {
           console.error('Error loading showtimes for filter:', apiError);
-          // setError(apiError.message || 'Không thể tải suất chiếu cho bộ lọc.'); // Có thể không cần báo lỗi ở đây để tránh làm phiền
           setShowtimesForFilter([]);
         }
-      } else {
-        setShowtimesForFilter([]);
-        setSelectedTime("");
       }
+      loadShowtimesForFilter();
     }
-
-    loadShowtimesForFilter();
   }, [selectedMovie, selectedTheater, selectedDate]);
+
+  const totalNowShowingPages = Math.ceil(nowShowingMovies.length / MOVIES_PER_PAGE);
+  const handleNextNowShowing = () => setNowShowingPage((prev) => (prev + 1) % totalNowShowingPages);
+  const handlePrevNowShowing = () => setNowShowingPage((prev) => (prev - 1 + totalNowShowingPages) % totalNowShowingPages);
+  const currentNowShowingMovies = nowShowingMovies.slice(
+    nowShowingPage * MOVIES_PER_PAGE,
+    (nowShowingPage + 1) * MOVIES_PER_PAGE
+  );
+
+  const totalComingSoonPages = Math.ceil(comingSoonMovies.length / MOVIES_PER_PAGE);
+  const handleNextComingSoon = () => setComingSoonPage((prev) => (prev + 1) % totalComingSoonPages);
+  const handlePrevComingSoon = () => setComingSoonPage((prev) => (prev - 1 + totalComingSoonPages) % totalComingSoonPages);
+  const currentComingSoonMovies = comingSoonMovies.slice(
+    comingSoonPage * MOVIES_PER_PAGE,
+    (comingSoonPage + 1) * MOVIES_PER_PAGE
+  );
 
   const nextSlide = () => {
     setCurrentSlide((prev) => (prev + 1) % banners.length);
@@ -119,18 +141,10 @@ export default function HomePage() {
 
   const handleBookTicket = () => {
     if (selectedMovie && selectedTheater && selectedDate && selectedTime) {
-      const showtime = showtimesForFilter.find(st => {
-        const stTime = new Date(st.showDateTime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
-        return stTime === selectedTime;
-      });
-      
-      if (showtime) {
-        navigate(`/booking?showtime=${showtime.id}`);
-      } else {
-        alert("Không tìm thấy suất chiếu phù hợp. Vui lòng kiểm tra lại.");
-      }
+      // `selectedTime` giờ đã là ID của suất chiếu, chỉ cần điều hướng
+      navigate(`/booking?showtime=${selectedTime}`);
     } else {
-      alert("Vui lòng chọn đầy đủ thông tin: Phim, Rạp, Ngày và Suất chiếu.");
+      alert("Vui lòng chọn đầy đủ thông tin.");
     }
   }
 
@@ -138,20 +152,12 @@ export default function HomePage() {
     if (!selectedMovie || !selectedTheater || !selectedDate || showtimesForFilter.length === 0) return [];
     
     return showtimesForFilter
-      .map(st => {
-        const time = new Date(st.showDateTime).toLocaleTimeString('vi-VN', {
-          hour: '2-digit',
-          minute: '2-digit'
-        });
-        return {
-          value: time,
-          label: time,
-          showtimeId: st.id
-        };
-      })
-      .filter((item, index, self) =>
-        index === self.findIndex((t) => (t.value === item.value))
-      )
+      .map(st => ({
+        // Lưu ID của suất chiếu vào value để dễ dàng sử dụng khi đặt vé
+        value: st.id, 
+        label: new Date(st.showDateTime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+      }))
+      .filter((item, index, self) => index === self.findIndex((t) => t.label === item.label))
       .sort((a,b) => a.label.localeCompare(b.label));
   }
 
@@ -163,10 +169,10 @@ export default function HomePage() {
       date.setDate(today.getDate() + i);
       const dateString = date.toISOString().split('T')[0];
       const label = i === 0 ? 'Hôm nay' : i === 1 ? 'Ngày mai' : 
-        date.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
+        date.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
       dates.push({
         value: dateString,
-        label: `${label} (${date.toLocaleDateString('vi-VN', { weekday: 'short' })})`
+        label: `${label} - ${date.toLocaleDateString('vi-VN', { weekday: 'long' })}`
       });
     }
     return dates;
@@ -249,79 +255,74 @@ export default function HomePage() {
         </div>
       </div>
 
-      {/* Quick Booking Section - Giữ lại vì hữu ích, có thể ẩn nếu không muốn */}
-       <div className="container mx-auto my-10 px-4">
-        <div className="bg-gray-800/70 backdrop-blur-sm rounded-lg p-6 shadow-lg">
-          <div className="flex items-center gap-3 mb-5">
-            <Ticket className="text-yellow-400" size={28} />
-            <h2 className="text-xl md:text-2xl font-semibold text-yellow-400">Đặt Vé Nhanh</h2>
+      {/* === KHU VỰC ĐẶT VÉ NHANH - ĐÃ CẬP NHẬT GIAO DIỆN VÀ LOGIC === */}
+      <div className="container mx-auto my-10 px-4">
+        <div className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-lg p-4 shadow-lg flex flex-col md:flex-row items-center gap-4">
+          <h2 className="text-xl font-bold uppercase text-white tracking-wider whitespace-nowrap pr-4">
+            Đặt vé nhanh
+          </h2>
+          
+          <div className="flex-grow w-full grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {/* 1. Chọn Rạp */}
+            <Select value={selectedTheater} onValueChange={setSelectedTheater}>
+              <SelectTrigger className="w-full bg-white text-purple-900 font-semibold border-purple-300">
+                <SelectValue placeholder="1. Chọn Rạp" />
+              </SelectTrigger>
+              <SelectContent className="bg-white text-purple-900">
+                {theaters.map((theater) => (
+                  <SelectItem key={theater.id} value={theater.id} className="hover:bg-purple-100">{theater.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {/* 2. Chọn Phim */}
+            <Select value={selectedMovie} onValueChange={setSelectedMovie}>
+              <SelectTrigger className="w-full bg-white text-purple-900 font-semibold border-purple-300">
+                <SelectValue placeholder="2. Chọn Phim" />
+              </SelectTrigger>
+              <SelectContent className="bg-white text-purple-900">
+                {allMoviesForFilter.map((movie) => (
+                  <SelectItem key={movie.id} value={movie.id} className="hover:bg-purple-100">{movie.title}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {/* 3. Chọn Ngày */}
+            <Select value={selectedDate} onValueChange={setSelectedDate}>
+              <SelectTrigger className="w-full bg-white text-purple-900 font-semibold border-purple-300">
+                <SelectValue placeholder="3. Chọn Ngày" />
+              </SelectTrigger>
+              <SelectContent className="bg-white text-purple-900">
+                {getDateOptions().map((date) => (
+                  <SelectItem key={date.value} value={date.value} className="hover:bg-purple-100">{date.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {/* 4. Chọn Suất */}
+            <Select value={selectedTime} onValueChange={setSelectedTime} disabled={getAvailableTimes().length === 0}>
+              <SelectTrigger className="w-full bg-white text-purple-900 font-semibold border-purple-300" disabled={getAvailableTimes().length === 0}>
+                <SelectValue placeholder={getAvailableTimes().length === 0 ? "Hết suất" : "4. Chọn Suất"} />
+              </SelectTrigger>
+              <SelectContent className="bg-white text-purple-900">
+                {getAvailableTimes().map((time) => (
+                  <SelectItem key={time.value} value={time.value} className="hover:bg-purple-100">{time.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end">
-            {/* Selectors for Movie, Theater, Date, Time */}
-            <div className="flex-grow">
-              <label htmlFor="movieFilter" className="block text-xs font-medium mb-1 text-gray-300">Phim</label>
-              <Select value={selectedMovie} onValueChange={setSelectedMovie}>
-                <SelectTrigger id="movieFilter" className="w-full bg-gray-700 border-gray-600 text-sm">
-                  <SelectValue placeholder="Chọn phim" />
-                </SelectTrigger>
-                <SelectContent className="bg-gray-700 border-gray-600">
-                  {allMoviesForFilter.map((movie) => (
-                    <SelectItem key={movie.id} value={movie.id} className="hover:bg-gray-600 text-sm">{movie.title}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-             <div className="flex-grow">
-              <label htmlFor="theaterFilter" className="block text-xs font-medium mb-1 text-gray-300">Rạp</label>
-              <Select value={selectedTheater} onValueChange={setSelectedTheater}>
-                <SelectTrigger id="theaterFilter" className="w-full bg-gray-700 border-gray-600 text-sm">
-                  <SelectValue placeholder="Chọn rạp" />
-                </SelectTrigger>
-                <SelectContent className="bg-gray-700 border-gray-600">
-                  {theaters.map((theater) => (
-                    <SelectItem key={theater.id} value={theater.id} className="hover:bg-gray-600 text-sm">{theater.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex-grow">
-              <label htmlFor="dateFilter" className="block text-xs font-medium mb-1 text-gray-300">Ngày</label>
-              <Select value={selectedDate} onValueChange={setSelectedDate}>
-                <SelectTrigger id="dateFilter" className="w-full bg-gray-700 border-gray-600 text-sm">
-                  <SelectValue placeholder="Chọn ngày" />
-                </SelectTrigger>
-                <SelectContent className="bg-gray-700 border-gray-600">
-                  {getDateOptions().map((date) => (
-                    <SelectItem key={date.value} value={date.value} className="hover:bg-gray-600 text-sm">{date.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex-grow">
-              <label htmlFor="timeFilter" className="block text-xs font-medium mb-1 text-gray-300">Suất chiếu</label>
-              <Select value={selectedTime} onValueChange={setSelectedTime} disabled={getAvailableTimes().length === 0}>
-                <SelectTrigger id="timeFilter" className="w-full bg-gray-700 border-gray-600 text-sm">
-                  <SelectValue placeholder={getAvailableTimes().length === 0 ? "Hết suất" : "Chọn suất"} />
-                </SelectTrigger>
-                <SelectContent className="bg-gray-700 border-gray-600">
-                  {getAvailableTimes().map((time) => (
-                    <SelectItem key={time.value} value={time.value} className="hover:bg-gray-600 text-sm">{time.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <Button
-              className="w-full bg-yellow-500 hover:bg-yellow-600 text-black font-bold disabled:bg-gray-500 disabled:cursor-not-allowed py-2.5 text-sm"
-              onClick={handleBookTicket}
-              disabled={!selectedTheater || !selectedMovie || !selectedDate || !selectedTime}
-            >
-              Mua Vé
-            </Button>
-          </div>
+
+          <Button
+            className="w-full md:w-auto px-8 py-2.5 bg-purple-700 hover:bg-purple-800 text-white font-bold disabled:bg-gray-500 disabled:cursor-not-allowed"
+            onClick={handleBookTicket}
+            disabled={!selectedTheater || !selectedMovie || !selectedDate || !selectedTime}
+          >
+            ĐẶT NGAY
+          </Button>
         </div>
       </div>
 
-      {/* Now Showing Section - Giống image_b7370c.png */}
+      {/* === PHẦN PHIM ĐANG CHIẾU - ĐÃ CẬP NHẬT BỐ CỤC NÚT === */}
       <div className="container mx-auto my-12 px-4">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-2xl md:text-3xl font-semibold text-white">Phim Đang Chiếu</h2>
@@ -331,32 +332,112 @@ export default function HomePage() {
             </Button>
           </Link>
         </div>
+        
         {nowShowingMovies.length > 0 ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-5">
-            {nowShowingMovies.map((movie) => (
-              <MovieCard key={movie.id} movie={movie} />
-            ))}
+          <div className="relative">
+            {/* Nút lùi */}
+            {totalNowShowingPages > 1 && (
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={handlePrevNowShowing}
+                className="absolute top-1/2 -translate-y-1/2 -left-4 z-10 h-10 w-10 rounded-full bg-black/40 hover:bg-black/70 border-gray-600 hidden lg:flex"
+              >
+                <ChevronLeft className="h-5 w-5" />
+              </Button>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
+              {currentNowShowingMovies.map((movie) => (
+                <MovieCard key={movie.id} movie={movie} />
+              ))}
+            </div>
+
+            {/* Nút tiến */}
+            {totalNowShowingPages > 1 && (
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={handleNextNowShowing}
+                className="absolute top-1/2 -translate-y-1/2 -right-4 z-10 h-10 w-10 rounded-full bg-black/40 hover:bg-black/70 border-gray-600 hidden lg:flex"
+              >
+                <ChevronRight className="h-5 w-5" />
+              </Button>
+            )}
+
+            {/* Dấu chấm phân trang */}
+            {totalNowShowingPages > 1 && (
+              <div className="flex justify-center gap-2 mt-6">
+                {Array.from({ length: totalNowShowingPages }, (_, i) => (
+                  <button
+                    key={i}
+                    onClick={() => setNowShowingPage(i)}
+                    className={`w-2.5 h-2.5 rounded-full transition-all duration-300 ${nowShowingPage === i ? "bg-yellow-500 scale-125" : "bg-white/60 hover:bg-white/90"}`}
+                  />
+                ))}
+              </div>
+            )}
           </div>
         ) : (
           <p className="text-center text-gray-400 py-8">Hiện không có phim nào đang chiếu.</p>
         )}
       </div>
 
-      {/* Coming Soon Section - Giống image_b7370c.png */}
+      {/* === PHẦN PHIM SẮP CHIẾU - ĐÃ CẬP NHẬT BỐ CỤC NÚT === */}
       <div className="container mx-auto my-12 px-4">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-2xl md:text-3xl font-semibold text-white">Phim Sắp Chiếu</h2>
-          <Link to="/movies?status=coming-soon">
+           <Link to="/movies?status=coming-soon">
             <Button variant="outline" className="text-purple-400 border-purple-400 hover:bg-purple-400 hover:text-black text-xs px-3 py-1 h-auto">
               Xem Tất Cả
             </Button>
           </Link>
         </div>
+
         {comingSoonMovies.length > 0 ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-5">
-            {comingSoonMovies.map((movie) => (
-              <MovieCard key={`coming-${movie.id}`} movie={{ ...movie, isComingSoon: true }} />
-            ))}
+           <div className="relative">
+             {/* Nút lùi */}
+            {totalComingSoonPages > 1 && (
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={handlePrevComingSoon}
+                className="absolute top-1/2 -translate-y-1/2 -left-4 z-10 h-10 w-10 rounded-full bg-black/40 hover:bg-black/70 border-gray-600 hidden lg:flex"
+              >
+                <ChevronLeft className="h-5 w-5" />
+              </Button>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
+              {currentComingSoonMovies.map((movie) => (
+                <MovieCard key={`coming-${movie.id}`} movie={{ ...movie, isComingSoon: true }} />
+              ))}
+            </div>
+
+            {/* Nút tiến */}
+            {totalComingSoonPages > 1 && (
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={handleNextComingSoon}
+                className="absolute top-1/2 -translate-y-1/2 -right-4 z-10 h-10 w-10 rounded-full bg-black/40 hover:bg-black/70 border-gray-600 hidden lg:flex"
+              >
+                <ChevronRight className="h-5 w-5" />
+              </Button>
+            )}
+            
+            {/* Dấu chấm phân trang */}
+            {totalComingSoonPages > 1 && (
+              <div className="flex justify-center gap-2 mt-6">
+                {Array.from({ length: totalComingSoonPages }, (_, i) => (
+                  <button
+                    key={i}
+                    onClick={() => setComingSoonPage(i)}
+                    className={`w-2.5 h-2.5 rounded-full transition-all duration-300 ${comingSoonPage === i ? "bg-purple-500 scale-125" : "bg-white/60 hover:bg-white/90"}`}
+                  />
+                ))}
+              </div>
+            )}
           </div>
         ) : (
            <p className="text-center text-gray-400 py-8">Chưa có thông tin phim sắp chiếu.</p>

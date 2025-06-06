@@ -14,7 +14,7 @@ export default function MovieCard({ movie }) {
       {/* Phần hình ảnh và overlay khi hover */}
       <div className="relative overflow-hidden rounded-lg shadow-lg">
         <Link to={`/movies/${movieData.id}`} className="block">
-          {/* Ảnh Poster */}
+
           <img
             src={movieData.poster || "/placeholder.svg"}
             alt={movieData.title}
@@ -23,9 +23,9 @@ export default function MovieCard({ movie }) {
           />
 
           {/* Nhãn giới hạn độ tuổi */}
-          {movieData.ageRestriction && (
-            <div className="absolute top-2 left-2 bg-red-600 text-white text-xs font-bold w-9 h-9 flex items-center justify-center rounded-md">
-              {movieData.ageRestriction}
+          {movieData.ageRating && (
+            <div className="absolute top-2 left-2 bg-red-600 text-white text-xs font-bold w-9 h-9 flex items-center justify-center rounded-md transition-opacity duration-300 group-hover:opacity-0">
+              {movieData.ageRating}
             </div>
           )}
 

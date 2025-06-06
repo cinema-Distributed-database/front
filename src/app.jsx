@@ -13,7 +13,7 @@ export default function App() {
     <Router>
       <div className="min-h-screen bg-[#0a1426] text-white flex flex-col">
         <Header />
-        <main className="flex-grow">
+        <main className="flex-grow px-20 mx-10">
           <Routes>
             <Route path="/" element={<HomePage />} />
             <Route path="/movies/:id" element={<MovieDetail />} />

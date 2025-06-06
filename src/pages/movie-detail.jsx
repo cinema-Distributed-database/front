@@ -2,11 +2,73 @@
 
 import { useState, useEffect } from "react"
 import { useParams, useNavigate } from "react-router-dom"
-import { Calendar, Clock, Film, Star, User, Users } from 'lucide-react'
+import { Calendar, Clock, Film, PlayCircle, ChevronDown, ChevronUp, Globe } from 'lucide-react'
 import { Button } from "../components/ui/button"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select"
 import { fetchMovie, fetchShowtimes, fetchTheaters } from "../lib/api"
+
+// Component nhỏ để quản lý việc mở/đóng danh sách rạp
+function TheaterShowtimes({ theater, showtimes, onBookTicket }) {
+  const [isOpen, setIsOpen] = useState(true);
+
+  const formatTime = (dateTimeString) => {
+    return new Date(dateTimeString).toLocaleTimeString('vi-VN', {
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  return (
+    <div className="bg-[#1a163a] border border-gray-700 rounded-lg mb-4">
+      <button
+        className="w-full flex justify-between items-center p-4 text-left"
+        onClick={() => setIsOpen(!isOpen)}
+      >
+        <div>
+          <h3 className="text-lg font-semibold text-yellow-400">{theater.name}</h3>
+          <p className="text-xs text-gray-400 mt-1">{theater.address}</p>
+        </div>
+        {isOpen ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+      </button>
+      {isOpen && (
+        <div className="p-4 border-t border-gray-700">
+          <p className="text-sm font-semibold mb-3">2D Phụ Đề</p>
+          <div className="flex flex-wrap gap-3">
+            {showtimes.map((showtime) => (
+              <Button
+                key={showtime.id}
+                variant="outline"
+                className="border-gray-500 hover:bg-yellow-500 hover:text-black bg-transparent text-white"
+                onClick={() => onBookTicket(showtime.id)}
+              >
+                {formatTime(showtime.showDateTime)}
+              </Button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Hàm trợ giúp để chuyển đổi ageRating
+const getAgeRatingDescription = (ageRating) => {
+  const rating = (ageRating || '').toUpperCase();
+
+  if (rating.includes('C18') || rating.includes('T18')) {
+    return 'Phim dành cho khán giả từ đủ 18 tuổi trở lên (18+).';
+  }
+  if (rating.includes('C16') || rating.includes('T16')) {
+    return 'Phim dành cho khán giả từ đủ 16 tuổi trở lên (16+).';
+  }
+  if (rating.includes('C13') || rating.includes('T13')) {
+    return 'Phim dành cho khán giả từ đủ 13 tuổi trở lên (13+).';
+  }
+  if (rating === 'K') {
+    return 'Phim phổ biến đến người xem dưới 13 tuổi với điều kiện xem cùng cha, mẹ hoặc người giám hộ.';
+  }
+  
+  return 'Phim dành cho khán giả mọi lứa tuổi.';
+};
 
 export default function MovieDetail() {
   const params = useParams()
@@ -14,9 +76,8 @@ export default function MovieDetail() {
   const [movie, setMovie] = useState(null)
   const [loading, setLoading] = useState(true)
   const [selectedDate, setSelectedDate] = useState("")
-  const [selectedTheater, setSelectedTheater] = useState("")
   const [theaters, setTheaters] = useState([])
-  const [showtimes, setShowtimes] = useState([])
+  const [allShowtimes, setAllShowtimes] = useState([])
   const [filteredShowtimes, setFilteredShowtimes] = useState([])
   const [dates, setDates] = useState([])
 
@@ -24,331 +85,222 @@ export default function MovieDetail() {
     const loadData = async () => {
       setLoading(true)
       try {
-        // Load movie data
-        const movieData = await fetchMovie(params.id)
+        const movieId = params.id;
+        const [movieData, showtimesData, theatersData] = await Promise.all([
+          fetchMovie(movieId),
+          fetchShowtimes({ movieId }),
+          fetchTheaters()
+        ]);
+
         if (!movieData) {
-          navigate('/not-found')
-          return
+          navigate('/not-found');
+          return;
         }
-        setMovie(movieData)
 
-        // Load theaters
-        const theatersData = await fetchTheaters()
-        setTheaters(theatersData || [])
+        setMovie(movieData);
+        setTheaters(theatersData || []);
+        setAllShowtimes(showtimesData || []);
 
-        // Generate dates for the next 7 days
-        const today = new Date()
-        const nextDates = Array.from({ length: 7 }, (_, i) => {
-          const date = new Date(today)
-          date.setDate(today.getDate() + i)
-          return date.toISOString().split("T")[0]
-        })
-        setDates(nextDates)
-        setSelectedDate(nextDates[0])
-
-        // Load showtimes for this movie
-        const showtimesData = await fetchShowtimes({ movieId: movieData.id })
-        setShowtimes(showtimesData || [])
-
+        const today = new Date();
+        const nextDates = Array.from({ length: 4 }, (_, i) => {
+          const date = new Date(today);
+          date.setDate(today.getDate() + i);
+          return date.toISOString().split("T")[0];
+        });
+        
+        setDates(nextDates);
+        if (nextDates.length > 0) {
+          setSelectedDate(nextDates[0]);
+        }
       } catch (error) {
-        console.error("Error loading movie data:", error)
-        navigate('/not-found')
+        console.error("Error loading movie data:", error);
+        navigate('/not-found');
       } finally {
-        setLoading(false)
+        setLoading(false);
       }
-    }
+    };
 
-    loadData()
-  }, [params.id, navigate])
+    loadData();
+  }, [params.id, navigate]);
 
   useEffect(() => {
-    if (showtimes.length > 0) {
-      let filtered = [...showtimes]
-
-      if (selectedDate) {
-        filtered = filtered.filter((s) => {
-          const showtimeDate = new Date(s.showDateTime).toISOString().split('T')[0]
-          return showtimeDate === selectedDate
-        })
-      }
-
-      if (selectedTheater) {
-        filtered = filtered.filter((s) => s.cinemaId === selectedTheater)
-      }
-
-      setFilteredShowtimes(filtered)
+    if (allShowtimes.length > 0) {
+      const filtered = allShowtimes.filter((s) => {
+        const showtimeDate = new Date(s.showDateTime).toISOString().split('T')[0];
+        return showtimeDate === selectedDate;
+      });
+      setFilteredShowtimes(filtered);
     }
-  }, [showtimes, selectedDate, selectedTheater])
+  }, [allShowtimes, selectedDate]);
+
 
   const handleBookTicket = (showTimeId) => {
-    navigate(`/booking?showtime=${showTimeId}`)
-  }
+    navigate(`/booking?showtime=${showTimeId}`);
+  };
 
-  const formatDate = (dateString) => {
-    const date = new Date(dateString)
-    const today = new Date()
-    const tomorrow = new Date(today)
-    tomorrow.setDate(today.getDate() + 1)
+  const formatDateLabel = (dateString) => {
+    const date = new Date(dateString);
+    const day = date.getDate().toString().padStart(2, '0');
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    return `${day}/${month}`;
+  };
 
-    if (date.toDateString() === today.toDateString()) {
-      return "Hôm nay"
-    } else if (date.toDateString() === tomorrow.toDateString()) {
-      return "Ngày mai"
-    } else {
-      return date.toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit" })
-    }
-  }
+  const formatWeekday = (dateString) => {
+    const date = new Date(dateString);
+    const today = new Date();
+    const tomorrow = new Date();
+    tomorrow.setDate(today.getDate() + 1);
 
-  const formatTime = (dateTimeString) => {
-    return new Date(dateTimeString).toLocaleTimeString('vi-VN', {
-      hour: '2-digit',
-      minute: '2-digit'
-    })
-  }
-
-  // Group showtimes by theater
-  const groupShowtimesByTheater = () => {
-    const grouped = {}
+    if (date.toDateString() === today.toDateString()) return "Hôm nay";
+    if (date.toDateString() === tomorrow.toDateString()) return "Ngày mai";
     
+    const weekday = date.toLocaleDateString("vi-VN", { weekday: "long" });
+    return weekday.charAt(0).toUpperCase() + weekday.slice(1);
+  }
+
+  const groupShowtimesByTheater = () => {
+    const grouped = {};
     filteredShowtimes.forEach(showtime => {
-      const theater = theaters.find(t => t.id === showtime.cinemaId)
+      const theater = theaters.find(t => t.id === showtime.cinemaId);
       if (theater) {
         if (!grouped[theater.id]) {
           grouped[theater.id] = {
             theater: theater,
             showtimes: []
-          }
+          };
         }
-        grouped[theater.id].showtimes.push(showtime)
+        grouped[theater.id].showtimes.push(showtime);
       }
-    })
-    
-    return Object.values(grouped)
-  }
+    });
+    return Object.values(grouped).sort((a, b) => a.theater.name.localeCompare(b.theater.name));
+  };
+  
+  const groupedShowtimes = groupShowtimesByTheater();
 
   if (loading) {
     return (
       <div className="container mx-auto py-12 px-4 flex justify-center">
-        <div className="animate-pulse flex flex-col items-center">
-          <div className="h-8 w-64 bg-gray-700 rounded mb-8"></div>
-          <div className="h-96 w-full max-w-4xl bg-gray-800 rounded"></div>
-        </div>
+        <div className="animate-spin h-10 w-10 border-4 border-yellow-500 border-t-transparent rounded-full"></div>
       </div>
-    )
+    );
   }
 
   if (!movie) {
     return (
       <div className="container mx-auto py-12 px-4 text-center">
-        <h1 className="text-3xl font-bold mb-4">Phim không tồn tại</h1>
-        <p className="mb-8">Không tìm thấy thông tin phim bạn yêu cầu.</p>
-        <Button onClick={() => navigate("/")}>Quay lại trang chủ</Button>
+        <h1 className="text-3xl font-bold">Phim không tồn tại.</h1>
+        <Button onClick={() => navigate("/")} className="mt-4">Quay lại</Button>
       </div>
-    )
+    );
   }
 
   return (
-    <div className="bg-[#0a1426] text-white min-h-screen">
-      {/* Movie Backdrop */}
-      <div className="relative w-full h-[50vh]">
-        <img 
-          src={movie.poster || "/placeholder.svg"} 
-          alt={movie.title} 
-          className="w-full h-full object-cover opacity-30" 
-        />
-        <div className="absolute inset-0 bg-gradient-to-t from-[#0a1426] to-transparent"></div>
-      </div>
-
-      {/* Movie Details */}
-      <div className="container mx-auto px-4 -mt-40 relative z-10">
+    <div className="bg-[#1a1a3a] text-white min-h-screen py-8">
+      <div className="container mx-auto px-4">
         <div className="flex flex-col md:flex-row gap-8">
-          {/* Movie Poster */}
-          <div className="flex-shrink-0">
-            <div className="relative w-64 h-96 rounded-lg overflow-hidden shadow-xl">
-              <img src={movie.poster || "/placeholder.svg"} alt={movie.title} className="w-full h-full object-cover" />
-              {movie.ageRating && (
-                <div className="absolute top-2 left-2 bg-red-600 text-white text-xs font-bold px-2 py-1 rounded">
-                  {movie.ageRating}
-                </div>
-              )}
+          <div className="w-full md:w-1/3 lg:w-1/4 flex-shrink-0 relative">
+            <div className="absolute top-1 left-1 gap-2 z-10">
+              <span className="bg-red-600 text-white font-bold px-3 py-1 rounded text-3xl">{movie.ageRating}</span>
             </div>
-
-            <div className="mt-4 flex justify-center">
-              <Button 
-                className="w-full bg-yellow-500 hover:bg-yellow-600 text-black font-bold"
-                onClick={() => {
-                  // Scroll to showtimes section
-                  document.getElementById('showtimes-section')?.scrollIntoView({ behavior: 'smooth' })
-                }}
-              >
-                Mua vé ngay
-              </Button>
-            </div>
+            <img 
+              src={movie.poster || "/placeholder.svg"} 
+              alt={movie.title} 
+              className="w-full h-auto rounded-lg shadow-xl" 
+              style={{ aspectRatio: '2/3' }}
+            />
           </div>
 
-          {/* Movie Info */}
-          <div className="flex-grow">
-            <h1 className="text-3xl md:text-4xl font-bold mb-2">{movie.title}</h1>
-            {movie.originalTitle && movie.originalTitle !== movie.title && (
-              <h2 className="text-xl text-gray-400 mb-4">{movie.originalTitle}</h2>
-            )}
+          <div className="w-full md:w-2/3 lg:w-3/4">
+            <h1 className="text-3xl font-bold uppercase mb-4">
+              {movie.title} {movie.originalTitle && `(${movie.originalTitle})`}
+            </h1>
 
-            <div className="flex flex-wrap gap-4 mb-6">
-              <div className="flex items-center gap-1">
-                <Clock size={20} />
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-2 mb-4 text-gray-300">
+              <div className="flex items-center gap-2">
+                <Film size={18} />
+                <span>{Array.isArray(movie.genres) ? movie.genres.join(", ") : "Đang cập nhật"}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Clock size={18} />
                 <span>{movie.duration} phút</span>
               </div>
-
-              <div className="flex items-center gap-1">
-                <Calendar size={20} />
-                <span>Khởi chiếu: {new Date(movie.releaseDate).toLocaleDateString("vi-VN")}</span>
+              <div className="flex items-center gap-2">
+                <span>Phụ đề: {movie.subtitles || "Tiếng Việt"}</span>
               </div>
-
-              <div className="flex items-center gap-1">
-                <Film size={20} />
-                <span>{Array.isArray(movie.genres) ? movie.genres.join(", ") : movie.genres}</span>
+              <div className="flex items-center gap-2">
+                <Globe size={14} />
+                <span>{movie.country}</span>
               </div>
             </div>
 
-            <div className="mb-6">
-              <h3 className="text-xl font-bold mb-2">Nội dung</h3>
-              <p className="text-gray-300">{movie.description}</p>
-            </div>
+            <p className="text-xl mb-6">
+              <span className="text-black bg-yellow-400 px-2 py-1">{getAgeRatingDescription(movie.ageRating)}</span>
+            </p>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+            <div className="space-y-4">
               <div>
-                <h3 className="text-xl font-bold mb-2">Đạo diễn</h3>
-                <div className="flex items-center gap-2">
-                  <User size={20} />
-                  <span>{Array.isArray(movie.directors) ? movie.directors.join(", ") : movie.directors}</span>
-                </div>
+                <h3 className="font-semibold text-lg text-yellow-400">MÔ TẢ</h3>
+                <p><strong>Đạo diễn:</strong> {Array.isArray(movie.directors) ? movie.directors.join(", ") : "Đang cập nhật"}</p>
+                <p><strong>Khởi chiếu:</strong> {new Date(movie.releaseDate).toLocaleDateString("vi-VN")}</p>
               </div>
-
-              {movie.cast && (
-                <div>
-                  <h3 className="text-xl font-bold mb-2">Diễn viên</h3>
-                  <div className="flex items-center gap-2">
-                    <Users size={20} />
-                    <span>{Array.isArray(movie.cast) ? movie.cast.join(", ") : "Đang cập nhật"}</span>
-                  </div>
-                </div>
-              )}
+              <div>
+                <h3 className="font-semibold text-lg text-yellow-400">NỘI DUNG PHIM</h3>
+                <p className="text-gray-300 leading-relaxed">{movie.description}</p>
+              </div>
             </div>
+            
+            {movie.trailer && (
+              <a href={movie.trailer} target="_blank" rel="noopener noreferrer">
+                <Button variant="outline" className="mt-6 border-yellow-400 text-yellow-400 hover:bg-yellow-400 hover:text-black">
+                  <PlayCircle size={20} className="mr-2" />
+                  Xem Trailer
+                </Button>
+              </a>
+            )}
           </div>
         </div>
 
-        {/* Trailer and Showtimes */}
-        <div className="mt-12" id="showtimes-section">
-          <Tabs defaultValue="showtimes">
-            <TabsList className="w-full max-w-md mx-auto">
-              <TabsTrigger value="showtimes" className="flex-1">
-                Lịch chiếu
-              </TabsTrigger>
-              <TabsTrigger value="trailer" className="flex-1">
-                Trailer
-              </TabsTrigger>
-              <TabsTrigger value="reviews" className="flex-1">
-                Đánh giá
-              </TabsTrigger>
-            </TabsList>
+        <div className="mt-12">
+          <h2 className="text-3xl font-bold text-center mb-6 uppercase">Lịch Chiếu</h2>
 
-            <TabsContent value="showtimes" className="mt-6">
-              <div className="bg-gray-900 rounded-lg p-6">
-                <div className="flex flex-col md:flex-row gap-4 mb-6">
-                  <div className="flex-1">
-                    <label className="block text-sm font-medium mb-2">Chọn ngày</label>
-                    <Select value={selectedDate} onValueChange={setSelectedDate}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Chọn ngày" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {dates.map((date) => (
-                          <SelectItem key={date} value={date}>
-                            {formatDate(date)} ({new Date(date).toLocaleDateString("vi-VN", { weekday: "short" })})
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+          <div className="flex justify-center gap-2 md:gap-4 mb-8">
+            {dates.map(date => (
+              <button
+                key={date}
+                onClick={() => setSelectedDate(date)}
+                className={`flex flex-col items-center justify-center p-2 rounded-lg w-20 h-20 transition-colors duration-200 ${
+                  selectedDate === date
+                    ? 'bg-yellow-500 text-black'
+                    : 'bg-[#2a2658] hover:bg-[#3e388b]'
+                }`}
+              >
+                <span className="font-bold text-lg">{formatDateLabel(date)}</span>
+                <span className="text-xs">{formatWeekday(date)}</span>
+              </button>
+            ))}
+          </div>
 
-                  <div className="flex-1">
-                    <label className="block text-sm font-medium mb-2">Chọn rạp</label>
-                    <Select value={selectedTheater} onValueChange={setSelectedTheater}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Tất cả rạp" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="">Tất cả rạp</SelectItem>
-                        {theaters.map((theater) => (
-                          <SelectItem key={theater.id} value={theater.id}>
-                            {theater.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                {groupShowtimesByTheater().length > 0 ? (
-                  <div className="space-y-6">
-                    {groupShowtimesByTheater().map(({ theater, showtimes: theaterShowtimes }) => (
-                      <div key={theater.id} className="border border-gray-800 rounded-lg p-4">
-                        <h3 className="text-xl font-bold mb-4">{theater.name}</h3>
-                        <p className="text-gray-400 text-sm mb-4">{theater.address}</p>
-
-                        <div className="flex flex-wrap gap-3">
-                          {theaterShowtimes.map((showtime) => (
-                            <Button
-                              key={showtime.id}
-                              variant="outline"
-                              className="border border-gray-600 hover:bg-yellow-500 hover:text-black bg-transparent text-white"
-                              onClick={() => handleBookTicket(showtime.id)}
-                            >
-                              {formatTime(showtime.showDateTime)}
-                            </Button>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center py-8">
-                    <p className="text-gray-400">Không có suất chiếu nào cho phim này vào ngày đã chọn.</p>
-                  </div>
-                )}
+          <div className="max-w-4xl mx-auto">
+            {loading ? (
+              <p className="text-center">Đang tải lịch chiếu...</p>
+            ) : groupedShowtimes.length > 0 ? (
+              groupedShowtimes.map(({ theater, showtimes }) => (
+                <TheaterShowtimes 
+                  key={theater.id}
+                  theater={theater}
+                  showtimes={showtimes}
+                  onBookTicket={handleBookTicket}
+                />
+              ))
+            ) : (
+              <div className="text-center py-8 bg-[#1a163a] rounded-lg">
+                <p className="text-gray-400">Không có suất chiếu nào cho ngày đã chọn.</p>
               </div>
-            </TabsContent>
-
-            <TabsContent value="trailer" className="mt-6">
-              <div className="bg-gray-900 rounded-lg p-6">
-                <div className="aspect-video">
-                  {movie.trailer ? (
-                    <iframe
-                      src={movie.trailer.replace("watch?v=", "embed/")}
-                      className="w-full h-full rounded-lg"
-                      allowFullScreen
-                      title={`Trailer ${movie.title}`}
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center bg-gray-800 rounded-lg">
-                      <p className="text-gray-400">Trailer chưa được cập nhật</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </TabsContent>
-
-            <TabsContent value="reviews" className="mt-6">
-              <div className="bg-gray-900 rounded-lg p-6">
-                <div className="text-center py-8">
-                  <p className="text-gray-400">Chưa có đánh giá nào cho phim này.</p>
-                  <Button className="mt-4">Viết đánh giá</Button>
-                </div>
-              </div>
-            </TabsContent>
-          </Tabs>
+            )}
+          </div>
         </div>
       </div>
     </div>
-  )
+  );
 }
