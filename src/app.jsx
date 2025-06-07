@@ -1,9 +1,12 @@
+// src/app.jsx
+
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom"
 import Header from "./components/header"
 import Footer from "./components/footer"
 import HomePage from "./pages/home"
 import MovieDetail from "./pages/movie-detail"
 import BookingPage from "./pages/booking"
+import CheckoutPage from "./pages/checkout" // Import trang mới
 import NotFoundPage from "./pages/not-found"
 import PaymentSuccess from "./pages/payment-success"
 import TheatersPage from "./pages/theaters"
@@ -18,6 +21,8 @@ export default function App() {
             <Route path="/" element={<HomePage />} />
             <Route path="/movies/:id" element={<MovieDetail />} />
             <Route path="/booking" element={<BookingPage />} />
+            {/* Thêm route cho trang checkout */}
+            <Route path="/checkout" element={<CheckoutPage />} /> 
             <Route path="/payment-success" element={<PaymentSuccess />} />
             <Route path="/theaters" element={<TheatersPage />} />
             <Route path="*" element={<NotFoundPage />} />
