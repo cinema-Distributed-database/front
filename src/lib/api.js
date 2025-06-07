@@ -285,7 +285,7 @@ export async function fetchRoom(id) {
 // ===== SHOWTIME API =====
 
 /**
- * Lấy lịch chiếu có filter (movieId, cinemaId, date, status).
+ * Lấy lịch chiếu có filter (movieId, cinemaId, city, date, status).
  * @param {object} filters - Các tham số filter.
  * @returns {Promise<Array>} Mảng các suất chiếu.
  */
@@ -293,12 +293,20 @@ export async function fetchShowtimes(filters = {}) {
   try {
     const params = new URLSearchParams();
     if (filters.movieId) params.append('movieId', filters.movieId);
-    if (filters.cinemaId) params.append('cinemaId', filters.cinemaId); // Sửa theaterId thành cinemaId
-    if (filters.date) params.append('date', formatDateForAPI(filters.date)); // Đảm bảo date được format đúng
+    if (filters.cinemaId) params.append('cinemaId', filters.cinemaId);
+    if (filters.city) params.append('city', filters.city);
+    
+    // Sử dụng date cho cả startDate và endDate để phù hợp với API mới
+    if (filters.date) {
+        const formattedDate = formatDateForAPI(filters.date);
+        params.append('startDate', formattedDate);
+        params.append('endDate', formattedDate);
+    }
+    
     if (filters.status) params.append('status', filters.status);
 
     // API này trả về trực tiếp mảng showtimes trong trường 'data'
-    return await apiClient.get(`/showtimes?${params.toString()}`);
+    return await apiClient.get('/showtimes', { params });
   } catch (error) {
     console.error('Error fetching showtimes:', error);
     throw handleApiError(error, 'Không thể tải lịch chiếu.');
